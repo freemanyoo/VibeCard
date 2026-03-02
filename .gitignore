@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+
+# Legacy leftover folder from the old nested structure
+react/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+frontend/*.tsbuildinfo
+frontend/public/uploads/*
+!frontend/public/uploads/.gitkeep
+frontend/dev.db
+frontend/dev.db-journal
+
+# Backend
+backend/.env
+backend/.env.*
+!backend/.env.example
+backend/.gradle/
+backend/build/
+backend/bin/
+backend/data/
+backend/uploads/
+
+# IDE
+.idea/
+.vscode/

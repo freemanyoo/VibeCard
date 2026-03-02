@@ -1,0 +1,90 @@
+server:
+  port: 8080
+
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  datasource:
+    url: jdbc:h2:file:./data/wedding
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+jwt:
+  secret: nlQgse9klW1Ye3x6vDnPdK/c//YNTsLh6GFbl2JniBM=aSecureKeyThatIsLongEnoughForHS256
+  expiration: 604800000
+
+upload:
+  dir: ${UPLOAD_DIR:./uploads}
+
+security:
+  oauth:
+    google:
+      client-id: ${GOOGLE_CLIENT_ID:}
+    naver:
+      client-id: ${NAVER_CLIENT_ID:}
+      client-secret: ${NAVER_CLIENT_SECRET:}
+    kakao:
+      rest-api-key: ${KAKAO_REST_API_KEY:}
+      client-secret: ${KAKAO_CLIENT_SECRET:}
+
+openclaw:
+  base-url: ${OPENCLAW_BASE_URL:}
+  auth:
+    type: ${OPENCLAW_AUTH_TYPE:bearer}
+    header: ${OPENCLAW_AUTH_HEADER:Authorization}
+    token: ${OPENCLAW_AUTH_TOKEN:}
+    token-openclaw1: ${OPENCLAW_AUTH_TOKEN_OPENCLAW1:}
+    token-openclaw2: ${OPENCLAW_AUTH_TOKEN_OPENCLAW2:}
+    token-openclaw3: ${OPENCLAW_AUTH_TOKEN_OPENCLAW3:}
+  mode: ${OPENCLAW_MODE:single_endpoint}
+  chat-path: ${OPENCLAW_CHAT_PATH:/v1/chat/completions}
+  path:
+    openclaw1: ${OPENCLAW_PATH_OPENCLAW1:}
+    openclaw2: ${OPENCLAW_PATH_OPENCLAW2:}
+    openclaw3: ${OPENCLAW_PATH_OPENCLAW3:}
+  url:
+    openclaw1: ${OPENCLAW_URL_OPENCLAW1:}
+    openclaw2: ${OPENCLAW_URL_OPENCLAW2:}
+    openclaw3: ${OPENCLAW_URL_OPENCLAW3:}
+  model:
+    openclaw1: ${OPENCLAW_MODEL_OPENCLAW1:openclaw1}
+    openclaw2: ${OPENCLAW_MODEL_OPENCLAW2:openclaw2}
+    openclaw3: ${OPENCLAW_MODEL_OPENCLAW3:openclaw3}
+    openclaw3-general: ${OPENCLAW_MODEL_OPENCLAW3_GENERAL:}
+    openclaw3-coding: ${OPENCLAW_MODEL_OPENCLAW3_CODING:}
+    openclaw3-vision: ${OPENCLAW_MODEL_OPENCLAW3_VISION:}
+  ollama-url:
+    openclaw3: ${OPENCLAW_OLLAMA_URL_OPENCLAW3:}
+  ollama-unload-after-vision: ${OPENCLAW_OLLAMA_UNLOAD_AFTER_VISION:true}
+
+openai:
+  base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+  api-key: ${OPENAI_API_KEY:}
+  vision-model: ${OPENAI_VISION_MODEL:gpt-4.1-mini}
