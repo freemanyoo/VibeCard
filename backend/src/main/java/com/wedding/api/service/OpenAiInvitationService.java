@@ -3,6 +3,8 @@ package com.wedding.api.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedding.api.dto.AiInvitationImageResponse;
+import com.wedding.api.entity.MediaFile;
+import com.wedding.api.repository.MediaFileRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,6 +37,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class OpenAiInvitationService {
     private final ObjectMapper objectMapper;
+    private final MediaFileRepository mediaFileRepository;
 
     @Value("${openclaw.base-url:}")
     private String openClawBaseUrl;
@@ -85,18 +88,19 @@ public class OpenAiInvitationService {
     @Value("${upload.dir:./uploads}")
     private String uploadDir;
 
-    public AiInvitationImageResponse generateFromReference(String photoUrl, String imageStyle, String modelAlias) {
+    public AiInvitationImageResponse generateFromReference(String sourceImageId, String photoUrl, String imageStyle, String modelAlias) {
         String alias = normalizeModelAlias(modelAlias);
         String resolvedToken = resolveAuthToken(alias);
         if (resolvedToken.isBlank()) {
             throw new IllegalStateException("OpenClaw 인증 토큰 설정이 비어 있습니다.");
         }
-        if (photoUrl == null || photoUrl.isBlank()) {
+        AnalysisImageSource imageSource = resolveAnalysisImageSource(alias, sourceImageId, photoUrl);
+        if (imageSource.sourceUrl().isBlank()) {
             throw new IllegalStateException("참고 이미지를 먼저 업로드해 주세요.");
         }
 
         try {
-            BufferedImage normalizedImage = loadAnalysisImage(photoUrl);
+            BufferedImage normalizedImage = loadAnalysisImage(imageSource.sourceUrl());
             String normalizedStyle = normalizeImageStyle(imageStyle);
             AnalysisResult analysis;
             try {
@@ -110,10 +114,13 @@ public class OpenAiInvitationService {
                 if (!isMethodNotAllowed(uploadError)) {
                     throw uploadError;
                 }
+                if (imageSource.mediaPath().isBlank()) {
+                    throw new IllegalStateException("현재 저장소 유형은 MediaPath fallback을 지원하지 않습니다.", uploadError);
+                }
                 analysis = analyzeReferenceImageByMediaPath(
                     alias,
-                    buildOpenClawMediaPath(alias, photoUrl),
-                    resolveMediaType(photoUrl),
+                    imageSource.mediaPath(),
+                    imageSource.mediaType(),
                     normalizedStyle,
                     resolvedToken
                 );
@@ -129,7 +136,7 @@ public class OpenAiInvitationService {
         }
     }
 
-    public AiInvitationImageResponse generateFromPrompt(String prompt, String photoUrl, String imageStyle, String modelAlias) {
+    public AiInvitationImageResponse generateFromPrompt(String prompt, String sourceImageId, String photoUrl, String imageStyle, String modelAlias) {
         String trimmedPrompt = clean(prompt);
         if (trimmedPrompt.isBlank()) {
             throw new IllegalStateException("AI 프롬프트를 입력해 주세요.");
@@ -144,8 +151,9 @@ public class OpenAiInvitationService {
         try {
             String normalizedStyle = normalizeImageStyle(imageStyle);
             AnalysisResult analysis;
-            if (!clean(photoUrl).isBlank()) {
-                BufferedImage normalizedImage = loadAnalysisImage(photoUrl);
+            AnalysisImageSource imageSource = resolveAnalysisImageSource(alias, sourceImageId, photoUrl);
+            if (!imageSource.sourceUrl().isBlank()) {
+                BufferedImage normalizedImage = loadAnalysisImage(imageSource.sourceUrl());
                 try {
                     analysis = generateWithUploadPayload(
                         alias,
@@ -158,10 +166,13 @@ public class OpenAiInvitationService {
                     if (!isMethodNotAllowed(uploadError)) {
                         throw uploadError;
                     }
+                    if (imageSource.mediaPath().isBlank()) {
+                        throw new IllegalStateException("현재 저장소 유형은 MediaPath fallback을 지원하지 않습니다.", uploadError);
+                    }
                     analysis = analyzeReferenceImageByMediaPath(
                         alias,
-                        buildOpenClawMediaPath(alias, photoUrl),
-                        resolveMediaType(photoUrl),
+                        imageSource.mediaPath(),
+                        imageSource.mediaType(),
                         normalizedStyle,
                         resolvedToken,
                         trimmedPrompt
@@ -804,12 +815,78 @@ public class OpenAiInvitationService {
                 if (path.startsWith("/uploads/")) {
                     return loadNormalizedUploadImage(Paths.get(path).getFileName().toString());
                 }
+                BufferedImage remoteImage = ImageIO.read(uri.toURL());
+                if (remoteImage == null) {
+                    throw new IllegalStateException("원격 이미지를 읽을 수 없습니다.");
+                }
+                return resizeForAnalysis(remoteImage, 1024);
             } catch (Exception ignored) {
-                // Fall through to unsupported remote URL.
+                throw new IllegalStateException("원격 이미지를 처리할 수 없습니다.", ignored);
             }
-            throw new IllegalStateException("외부 URL 이미지는 현재 지원하지 않습니다.");
         }
         throw new IllegalStateException("지원하지 않는 이미지 참조 형식입니다.");
+    }
+
+    private AnalysisImageSource resolveAnalysisImageSource(String modelAlias, String sourceImageId, String fallbackUrl) {
+        String cleanedId = clean(sourceImageId);
+        if (!cleanedId.isBlank()) {
+            MediaFile mediaFile = mediaFileRepository.findById(cleanedId)
+                    .orElseThrow(() -> new IllegalStateException("참고 이미지 메타데이터를 찾을 수 없습니다."));
+            String preferredUrl = firstNonBlank(mediaFile.getAnalysisUrl(), mediaFile.getOriginalUrl());
+            if (preferredUrl.isBlank()) {
+                throw new IllegalStateException("참고 이미지 URL이 비어 있습니다.");
+            }
+
+            String localReference = firstNonBlank(mediaFile.getAnalysisObjectKey(), mediaFile.getOriginalObjectKey());
+            String mediaPath = "";
+            if ("LOCAL".equalsIgnoreCase(clean(mediaFile.getStorageMode())) && !localReference.isBlank()) {
+                mediaPath = buildOpenClawMediaPath(modelAlias, localReference);
+            }
+            return new AnalysisImageSource(
+                    preferredUrl,
+                    mediaPath,
+                    detectMediaTypeFromReference(firstNonBlank(mediaFile.getAnalysisObjectKey(), mediaFile.getOriginalObjectKey(), preferredUrl))
+            );
+        }
+
+        String resolvedFallback = clean(fallbackUrl);
+        if (resolvedFallback.isBlank()) {
+            return new AnalysisImageSource("", "", "image/jpeg");
+        }
+        String mediaPath = canBuildLocalMediaPath(resolvedFallback)
+                ? buildOpenClawMediaPath(modelAlias, resolvedFallback)
+                : "";
+        return new AnalysisImageSource(
+                resolvedFallback,
+                mediaPath,
+                resolveMediaType(resolvedFallback)
+        );
+    }
+
+    private boolean canBuildLocalMediaPath(String reference) {
+        String raw = clean(reference);
+        return raw.startsWith("/uploads/") || raw.startsWith("file_");
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            String cleaned = clean(value);
+            if (!cleaned.isBlank()) {
+                return cleaned;
+            }
+        }
+        return "";
+    }
+
+    private String detectMediaTypeFromReference(String reference) {
+        String raw = clean(reference).toLowerCase(Locale.ROOT);
+        if (raw.endsWith(".png")) return "image/png";
+        if (raw.endsWith(".webp")) return "image/webp";
+        if (raw.endsWith(".gif")) return "image/gif";
+        return "image/jpeg";
     }
 
     private BufferedImage loadNormalizedUploadImage(String filename) {
@@ -1254,4 +1331,5 @@ public class OpenAiInvitationService {
 
     private record AnalysisResult(String summary, String congratulatoryMessage, Map<String, Object> configPatch) {}
     private record UploadPayload(BufferedImage image, byte[] bytes, String contentType, String filename) {}
+    private record AnalysisImageSource(String sourceUrl, String mediaPath, String mediaType) {}
 }

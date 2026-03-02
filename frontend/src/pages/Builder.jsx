@@ -207,12 +207,16 @@ export default function Builder() {
   const [aiInvitationModelAlias, setAiInvitationModelAlias] = useState("openclaw1");
   const [aiInvitationImageStyle, setAiInvitationImageStyle] = useState("standard");
   const [aiInvitationPhotoUrl, setAiInvitationPhotoUrl] = useState(null);
+  const [aiInvitationAnalysisImageUrl, setAiInvitationAnalysisImageUrl] = useState(null);
+  const [aiInvitationSourceImageId, setAiInvitationSourceImageId] = useState(null);
   const [aiInvitationPhotoDirty, setAiInvitationPhotoDirty] = useState(false);
   const [aiInvitationPrompt, setAiInvitationPrompt] = useState("");
   const [aiInvitationHistory, setAiInvitationHistory] = useState([]);
   const [isAiInvitationGenerating, setIsAiInvitationGenerating] = useState(false);
   const [aiInvitationAnalysis, setAiInvitationAnalysis] = useState("");
   const [aiInvitationCongrats, setAiInvitationCongrats] = useState("");
+  const [mainPhotoMediaFileId, setMainPhotoMediaFileId] = useState(null);
+  const [mainPhotoAnalysisUrl, setMainPhotoAnalysisUrl] = useState(null);
 
   useEffect(() => {
     if (querySlug) {
@@ -736,8 +740,12 @@ export default function Builder() {
       const res = await api.post("/invitations/upload", data, { headers: { "Content-Type": "multipart/form-data" } });
       if (res.data.success && res.data.url) {
         updateFormData({ photoUrl: res.data.url });
+        setMainPhotoMediaFileId(res.data.mediaFileId || null);
+        setMainPhotoAnalysisUrl(res.data.analysisImageUrl || res.data.url);
         if (!aiInvitationPhotoDirty) {
           setAiInvitationPhotoUrl(res.data.url);
+          setAiInvitationAnalysisImageUrl(res.data.analysisImageUrl || res.data.url);
+          setAiInvitationSourceImageId(res.data.mediaFileId || null);
         }
       } else {
         alert("업로드 실패");
@@ -750,6 +758,8 @@ export default function Builder() {
   const openAiInvitationModal = () => {
     setAiInvitationImageStyle(String(config.imageStyle || "standard") === "full" ? "full" : "standard");
     setAiInvitationPhotoUrl(formData.photoUrl || null);
+    setAiInvitationAnalysisImageUrl(mainPhotoAnalysisUrl || formData.photoUrl || null);
+    setAiInvitationSourceImageId(mainPhotoMediaFileId || null);
     setAiInvitationPhotoDirty(false);
     setShowAiInvitationModal(true);
   };
@@ -760,6 +770,8 @@ export default function Builder() {
       const res = await api.post("/invitations/upload", data, { headers: { "Content-Type": "multipart/form-data" } });
       if (res.data.success && res.data.url) {
         setAiInvitationPhotoUrl(res.data.url);
+        setAiInvitationAnalysisImageUrl(res.data.analysisImageUrl || res.data.url);
+        setAiInvitationSourceImageId(res.data.mediaFileId || null);
         setAiInvitationPhotoDirty(true);
       }
       else alert("업로드 실패");
@@ -774,23 +786,26 @@ export default function Builder() {
     }
     let aiPhotoInput = aiInvitationPhotoUrl;
     try {
-      aiPhotoInput = new URL(String(aiInvitationPhotoUrl), window.location.origin).toString();
+      aiPhotoInput = new URL(String(aiInvitationAnalysisImageUrl || aiInvitationPhotoUrl), window.location.origin).toString();
     } catch {
-      aiPhotoInput = aiInvitationPhotoUrl;
+      aiPhotoInput = aiInvitationAnalysisImageUrl || aiInvitationPhotoUrl;
     }
     console.log("[AI Invitation] image request", {
       modelAlias: aiInvitationModelAlias,
       imageStyle: aiInvitationImageStyle,
       aiInvitationPhotoUrl,
+      aiInvitationAnalysisImageUrl,
       formPhotoUrl: formData.photoUrl,
       aiInvitationPhotoDirty,
       analysisImageUrl: aiPhotoInput,
+      sourceImageId: aiInvitationSourceImageId,
     });
     const selectedModelLabel = AI_INVITATION_MODEL_OPTIONS.find((item) => item.value === aiInvitationModelAlias)?.label || "OpenAI";
     const historyLabel = `이미지 기반 · ${selectedModelLabel} · ${aiInvitationImageStyle === "full" ? "전체 사진" : "일반 박스"} · ${aiInvitationPhotoUrl ? "사진 업로드됨" : "기본 이미지"}`;
     setIsAiInvitationGenerating(true);
     try {
       const res = await api.post("/invitations/ai-generate-from-image", {
+        sourceImageId: aiInvitationSourceImageId || null,
         analysisImageUrl: aiPhotoInput,
         imageStyle: aiInvitationImageStyle,
         modelAlias: aiInvitationModelAlias,
@@ -822,8 +837,9 @@ export default function Builder() {
     setIsAiInvitationGenerating(true);
     try {
       const res = await api.post("/invitations/ai-generate-from-prompt", {
+        sourceImageId: aiInvitationSourceImageId || null,
         prompt: trimmed,
-        analysisImageUrl: aiInvitationPhotoUrl || null,
+        analysisImageUrl: aiInvitationAnalysisImageUrl || aiInvitationPhotoUrl || null,
         imageStyle: aiInvitationImageStyle,
         modelAlias: aiInvitationModelAlias,
       });

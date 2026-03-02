@@ -104,7 +104,12 @@ public class InvitationController {
             if (analysisImageUrl == null || analysisImageUrl.isBlank()) {
                 analysisImageUrl = req.getPhotoUrl();
             }
-            AiInvitationImageResponse result = openAiInvitationService.generateFromReference(analysisImageUrl, req.getImageStyle(), req.getModelAlias());
+            AiInvitationImageResponse result = openAiInvitationService.generateFromReference(
+                    req.getSourceImageId(),
+                    analysisImageUrl,
+                    req.getImageStyle(),
+                    req.getModelAlias()
+            );
             aiGenerationHistoryService.record(
                     userId,
                     req.getSourceImageId(),
@@ -129,6 +134,7 @@ public class InvitationController {
             }
             AiInvitationImageResponse result = openAiInvitationService.generateFromPrompt(
                 req.getPrompt(),
+                req.getSourceImageId(),
                 analysisImageUrl,
                 req.getImageStyle(),
                 req.getModelAlias()
