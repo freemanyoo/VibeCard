@@ -19,11 +19,13 @@ storage:
   minio:
     fast:
       endpoint: ${MINIO_FAST_ENDPOINT:}
+      public-base-url: ${MINIO_FAST_PUBLIC_BASE_URL:}
       access-key: ${MINIO_FAST_ACCESS_KEY:}
       secret-key: ${MINIO_FAST_SECRET_KEY:}
       bucket: ${MINIO_FAST_BUCKET:vibecard-fast}
     cold:
       endpoint: ${MINIO_COLD_ENDPOINT:}
+      public-base-url: ${MINIO_COLD_PUBLIC_BASE_URL:}
       access-key: ${MINIO_COLD_ACCESS_KEY:}
       secret-key: ${MINIO_COLD_SECRET_KEY:}
       bucket: ${MINIO_COLD_BUCKET:vibecard-cold}

@@ -1,0 +1,115 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vibecard-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vibecard
+      POSTGRES_USER: vibecard
+      POSTGRES_PASSWORD: change-me
+    volumes:
+      # NVMe volume example
+      - /volume2/docker/vibecard/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vibecard -d vibecard"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio-fast:
+    image: minio/minio:latest
+    container_name: vibecard-minio-fast
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: miniofast
+      MINIO_ROOT_PASSWORD: change-me-fast
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      # NVMe volume example
+      - /volume2/docker/vibecard/minio-fast:/data
+
+  minio-cold:
+    image: minio/minio:latest
+    container_name: vibecard-minio-cold
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: miniocold
+      MINIO_ROOT_PASSWORD: change-me-cold
+    ports:
+      - "9100:9000"
+      - "9101:9001"
+    volumes:
+      # HDD volume example
+      - /volume1/docker/vibecard/minio-cold:/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vibecard-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DATABASE_URL: jdbc:postgresql://postgres:5432/vibecard
+      DATABASE_USERNAME: vibecard
+      DATABASE_PASSWORD: change-me
+      JPA_DDL_AUTO: update
+      UPLOAD_DIR: /app/uploads
+
+      MINIO_FAST_ENDPOINT: http://minio-fast:9000
+      MINIO_FAST_PUBLIC_BASE_URL: https://your-domain.example/minio-fast
+      MINIO_FAST_ACCESS_KEY: miniofast
+      MINIO_FAST_SECRET_KEY: change-me-fast
+      MINIO_FAST_BUCKET: vibecard-fast
+
+      MINIO_COLD_ENDPOINT: http://minio-cold:9000
+      MINIO_COLD_PUBLIC_BASE_URL: https://your-domain.example/minio-cold
+      MINIO_COLD_ACCESS_KEY: miniocold
+      MINIO_COLD_SECRET_KEY: change-me-cold
+      MINIO_COLD_BUCKET: vibecard-cold
+
+      # Fill these with real values before production use.
+      GOOGLE_CLIENT_ID: ""
+      NAVER_CLIENT_ID: ""
+      NAVER_CLIENT_SECRET: ""
+      KAKAO_REST_API_KEY: ""
+      KAKAO_CLIENT_SECRET: ""
+      MAIL_HOST: ""
+      MAIL_PORT: "587"
+      MAIL_USERNAME: ""
+      MAIL_PASSWORD: ""
+      OPENCLAW_BASE_URL: ""
+      OPENCLAW_AUTH_TYPE: "bearer"
+      OPENCLAW_AUTH_HEADER: "Authorization"
+      OPENCLAW_AUTH_TOKEN: ""
+      OPENCLAW_AUTH_TOKEN_OPENCLAW1: ""
+      OPENCLAW_AUTH_TOKEN_OPENCLAW2: ""
+      OPENCLAW_AUTH_TOKEN_OPENCLAW3: ""
+      OPENCLAW_MODE: "multi_endpoint"
+      OPENCLAW_CHAT_PATH: "/v1/chat/completions"
+      OPENCLAW_MODEL_OPENCLAW1: ""
+      OPENCLAW_MODEL_OPENCLAW2: ""
+      OPENCLAW_MODEL_OPENCLAW3: ""
+      OPENCLAW_MODEL_OPENCLAW3_GENERAL: ""
+      OPENCLAW_MODEL_OPENCLAW3_CODING: ""
+      OPENCLAW_MODEL_OPENCLAW3_VISION: ""
+      OPENCLAW_OLLAMA_URL_OPENCLAW3: ""
+      OPENCLAW_OLLAMA_UNLOAD_AFTER_VISION: "true"
+      OPENCLAW_URL_OPENCLAW1: ""
+      OPENCLAW_URL_OPENCLAW2: ""
+      OPENCLAW_URL_OPENCLAW3: ""
+      OPENAI_BASE_URL: "https://api.openai.com/v1"
+      OPENAI_API_KEY: ""
+      OPENAI_VISION_MODEL: "gpt-4.1-mini"
+    ports:
+      - "8080:8080"
+    volumes:
+      # Temporary compatibility path until local upload fallback is removed.
+      - /volume1/docker/vibecard/backend/uploads:/app/uploads

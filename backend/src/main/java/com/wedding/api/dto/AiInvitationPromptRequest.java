@@ -4,6 +4,7 @@ import lombok.Data;
 
 @Data
 public class AiInvitationPromptRequest {
+    private String sourceImageId;
     private String prompt;
     private String photoUrl;
     private String analysisImageUrl;

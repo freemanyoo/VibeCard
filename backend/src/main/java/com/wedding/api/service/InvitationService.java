@@ -20,6 +20,7 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.*;
@@ -34,12 +35,16 @@ public class InvitationService {
     private static final float ORIGINAL_JPEG_QUALITY = 0.90f;
     private static final int THUMB_MAX_EDGE = 900;
     private static final float THUMB_JPEG_QUALITY = 0.82f;
+    private static final int ANALYSIS_MAX_EDGE = 1400;
+    private static final float ANALYSIS_JPEG_QUALITY = 0.78f;
 
     private final InvitationRepository invitationRepository;
     private final BankAccountRepository bankAccountRepository;
     private final GuestbookRepository guestbookRepository;
     private final AttendanceRepository attendanceRepository;
     private final UserRepository userRepository;
+    private final MediaFileRepository mediaFileRepository;
+    private final ObjectStorageService objectStorageService;
 
     @Value("${upload.dir}")
     private String uploadDir;
@@ -153,10 +158,7 @@ public class InvitationService {
         throw new RuntimeException("이미 사용 중인 청첩장 주소입니다. 다른 주소를 입력해 주세요.");
     }
 
-    public UploadResult uploadFile(MultipartFile file) throws IOException {
-        Path uploadPath = Paths.get(uploadDir).toAbsolutePath();
-        Files.createDirectories(uploadPath);
-
+    public UploadResult uploadFile(MultipartFile file, String userId) throws IOException {
         String ext = "";
         String originalName = file.getOriginalFilename();
         if (originalName != null && originalName.contains(".")) {
@@ -168,34 +170,159 @@ public class InvitationService {
 
         String outputExt = normalizeOutputExt(ext, isImage);
         String fileName = UUID.randomUUID() + "." + outputExt;
+        String contentType = resolveContentType(file.getContentType(), outputExt, isImage);
+
+        if (objectStorageService.isEnabled()) {
+            return uploadToObjectStorage(userId, bytes, src, isImage, outputExt, fileName, contentType);
+        }
+
+        return uploadToLocalStorage(userId, bytes, src, isImage, outputExt, fileName, contentType);
+    }
+
+    private UploadResult uploadToLocalStorage(String userId, byte[] bytes, BufferedImage src, boolean isImage, String outputExt, String fileName, String contentType) throws IOException {
+        Path uploadPath = Paths.get(uploadDir).toAbsolutePath();
+        Files.createDirectories(uploadPath);
         Path originalPath = uploadPath.resolve(fileName);
+        StoredAsset originalAsset;
+        StoredAsset thumbnailAsset = null;
+        StoredAsset analysisAsset = null;
 
         if (!isImage) {
             Files.write(originalPath, bytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            return new UploadResult("/uploads/" + fileName, null);
+            originalAsset = new StoredAsset(null, fileName, "/uploads/" + fileName);
+            MediaFile mediaFile = saveMediaFile(userId, contentType, bytes.length, null, originalAsset, null, null, "LOCAL");
+            return new UploadResult(originalAsset.url(), null, null, mediaFile.getId());
         }
 
         BufferedImage optimized = scaleImage(src, ORIGINAL_MAX_EDGE);
         writeImageByExt(optimized, originalPath, outputExt);
+        originalAsset = new StoredAsset(null, fileName, "/uploads/" + fileName);
 
         String thumbnailUrl = createThumbnailIfImage(optimized, fileName, uploadPath);
-        return new UploadResult("/uploads/" + fileName, thumbnailUrl);
+        if (thumbnailUrl != null) {
+            String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+            thumbnailAsset = new StoredAsset(null, baseName + "-thumb.jpg", thumbnailUrl);
+        }
+        String analysisImageUrl = createAnalysisIfImage(optimized, fileName, uploadPath);
+        if (analysisImageUrl != null) {
+            String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+            analysisAsset = new StoredAsset(null, baseName + "-analysis.jpg", analysisImageUrl);
+        }
+        MediaFile mediaFile = saveMediaFile(userId, contentType, bytes.length, optimized, originalAsset, thumbnailAsset, analysisAsset, "LOCAL");
+        return new UploadResult(originalAsset.url(), thumbnailUrl, analysisImageUrl, mediaFile.getId());
     }
 
-    public record UploadResult(String url, String thumbnailUrl) {}
+    private UploadResult uploadToObjectStorage(String userId, byte[] bytes, BufferedImage src, boolean isImage, String outputExt, String fileName, String contentType) throws IOException {
+        if (!isImage) {
+            String objectKey = buildObjectKey("invitations/original", fileName);
+            ObjectStorageService.StoredObject stored = objectStorageService.store(
+                    objectKey,
+                    bytes,
+                    contentType,
+                    ObjectStorageService.StorageTier.COLD
+            );
+            StoredAsset originalAsset = toStoredAsset(stored);
+            MediaFile mediaFile = saveMediaFile(userId, contentType, bytes.length, null, originalAsset, null, null, "MINIO");
+            return new UploadResult(stored.getUrl(), null, null, mediaFile.getId());
+        }
+
+        BufferedImage optimized = scaleImage(src, ORIGINAL_MAX_EDGE);
+        String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+
+        ObjectStorageService.StoredObject originalStored = objectStorageService.store(
+                buildObjectKey("invitations/original", fileName),
+                encodeImageByExt(optimized, outputExt),
+                contentType,
+                ObjectStorageService.StorageTier.COLD
+        );
+        StoredAsset originalAsset = toStoredAsset(originalStored);
+
+        String thumbnailUrl = null;
+        StoredAsset thumbnailAsset = null;
+        byte[] thumbBytes = createThumbnailBytes(optimized);
+        if (thumbBytes != null) {
+            ObjectStorageService.StoredObject thumbStored = objectStorageService.store(
+                    buildObjectKey("invitations/thumb", baseName + "-thumb.jpg"),
+                    thumbBytes,
+                    "image/jpeg",
+                    ObjectStorageService.StorageTier.FAST
+            );
+            thumbnailUrl = thumbStored.getUrl();
+            thumbnailAsset = toStoredAsset(thumbStored);
+        }
+
+        String analysisImageUrl = null;
+        StoredAsset analysisAsset = null;
+        byte[] analysisBytes = createAnalysisBytes(optimized);
+        if (analysisBytes != null) {
+            ObjectStorageService.StoredObject analysisStored = objectStorageService.store(
+                    buildObjectKey("invitations/analysis", baseName + "-analysis.jpg"),
+                    analysisBytes,
+                    "image/jpeg",
+                    ObjectStorageService.StorageTier.FAST
+            );
+            analysisImageUrl = analysisStored.getUrl();
+            analysisAsset = toStoredAsset(analysisStored);
+        }
+
+        MediaFile mediaFile = saveMediaFile(userId, contentType, bytes.length, optimized, originalAsset, thumbnailAsset, analysisAsset, "MINIO");
+        return new UploadResult(originalStored.getUrl(), thumbnailUrl, analysisImageUrl, mediaFile.getId());
+    }
+
+    public record UploadResult(String url, String thumbnailUrl, String analysisImageUrl, String mediaFileId) {}
 
     private String createThumbnailIfImage(BufferedImage src, String fileName, Path uploadPath) {
+        byte[] thumbBytes = createThumbnailBytes(src);
+        if (thumbBytes == null) {
+            return null;
+        }
+        try {
+            String baseName = fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
+            String thumbFileName = baseName + "-thumb.jpg";
+            Path thumbPath = uploadPath.resolve(thumbFileName);
+            Files.write(thumbPath, thumbBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            return "/uploads/" + thumbFileName;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String createAnalysisIfImage(BufferedImage src, String fileName, Path uploadPath) {
+        byte[] analysisBytes = createAnalysisBytes(src);
+        if (analysisBytes == null) {
+            return null;
+        }
+        try {
+            String baseName = fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
+            String analysisFileName = baseName + "-analysis.jpg";
+            Path analysisPath = uploadPath.resolve(analysisFileName);
+            Files.write(analysisPath, analysisBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            return "/uploads/" + analysisFileName;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private byte[] createThumbnailBytes(BufferedImage src) {
+        return createDerivedJpeg(src, THUMB_MAX_EDGE, THUMB_JPEG_QUALITY);
+    }
+
+    private byte[] createAnalysisBytes(BufferedImage src) {
+        return createDerivedJpeg(src, ANALYSIS_MAX_EDGE, ANALYSIS_JPEG_QUALITY);
+    }
+
+    private byte[] createDerivedJpeg(BufferedImage src, int maxEdge, float quality) {
         try {
             int srcW = src.getWidth();
             int srcH = src.getHeight();
             if (srcW <= 0 || srcH <= 0) return null;
 
-            double ratio = Math.min((double) THUMB_MAX_EDGE / srcW, (double) THUMB_MAX_EDGE / srcH);
+            double ratio = Math.min((double) maxEdge / srcW, (double) maxEdge / srcH);
             int dstW = Math.max(1, (int) Math.round(srcW * Math.min(1.0, ratio)));
             int dstH = Math.max(1, (int) Math.round(srcH * Math.min(1.0, ratio)));
 
-            BufferedImage thumb = new BufferedImage(dstW, dstH, BufferedImage.TYPE_INT_RGB);
-            Graphics2D g = thumb.createGraphics();
+            BufferedImage output = new BufferedImage(dstW, dstH, BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = output.createGraphics();
             try {
                 g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
                 g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
@@ -207,11 +334,7 @@ public class InvitationService {
                 g.dispose();
             }
 
-            String baseName = fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
-            String thumbFileName = baseName + "-thumb.jpg";
-            Path thumbPath = uploadPath.resolve(thumbFileName);
-            writeJpeg(thumb, thumbPath);
-            return "/uploads/" + thumbFileName;
+            return encodeJpeg(output, quality);
         } catch (Exception ignored) {
             return null;
         }
@@ -274,20 +397,105 @@ public class InvitationService {
 
     private void writeImageByExt(BufferedImage image, Path outputPath, String ext) throws IOException {
         if ("jpg".equals(ext) || "jpeg".equals(ext)) {
-            BufferedImage rgb = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_RGB);
-            Graphics2D g = rgb.createGraphics();
-            try {
-                g.setColor(Color.WHITE);
-                g.fillRect(0, 0, rgb.getWidth(), rgb.getHeight());
-                g.drawImage(image, 0, 0, null);
-            } finally {
-                g.dispose();
-            }
+            BufferedImage rgb = toRgbImage(image);
             writeJpeg(rgb, outputPath, ORIGINAL_JPEG_QUALITY);
             return;
         }
         ImageIO.write(image, ext, outputPath.toFile());
     }
+
+    private byte[] encodeImageByExt(BufferedImage image, String ext) throws IOException {
+        if ("jpg".equals(ext) || "jpeg".equals(ext)) {
+            return encodeJpeg(toRgbImage(image), ORIGINAL_JPEG_QUALITY);
+        }
+
+        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+            if (!ImageIO.write(image, ext, outputStream)) {
+                throw new IOException("Image writer not found for ext: " + ext);
+            }
+            return outputStream.toByteArray();
+        }
+    }
+
+    private byte[] encodeJpeg(BufferedImage image, float quality) throws IOException {
+        Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpg");
+        if (!writers.hasNext()) throw new IOException("JPEG writer not found");
+
+        ImageWriter writer = writers.next();
+        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+             ImageOutputStream ios = ImageIO.createImageOutputStream(outputStream)) {
+            writer.setOutput(ios);
+            ImageWriteParam param = writer.getDefaultWriteParam();
+            if (param.canWriteCompressed()) {
+                param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+                param.setCompressionQuality(quality);
+            }
+            writer.write(null, new IIOImage(image, null, null), param);
+            ios.flush();
+            return outputStream.toByteArray();
+        } finally {
+            writer.dispose();
+        }
+    }
+
+    private BufferedImage toRgbImage(BufferedImage image) {
+        BufferedImage rgb = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = rgb.createGraphics();
+        try {
+            g.setColor(Color.WHITE);
+            g.fillRect(0, 0, rgb.getWidth(), rgb.getHeight());
+            g.drawImage(image, 0, 0, null);
+        } finally {
+            g.dispose();
+        }
+        return rgb;
+    }
+
+    private String buildObjectKey(String prefix, String fileName) {
+        LocalDateTime now = LocalDateTime.now();
+        return prefix + "/"
+                + now.getYear() + "/"
+                + String.format(Locale.ROOT, "%02d", now.getMonthValue()) + "/"
+                + fileName;
+    }
+
+    private String resolveContentType(String contentType, String ext, boolean isImage) {
+        if (contentType != null && !contentType.isBlank()) {
+            return contentType;
+        }
+        if (!isImage) {
+            return "application/octet-stream";
+        }
+        return "png".equals(ext) ? "image/png" : "image/jpeg";
+    }
+
+    private MediaFile saveMediaFile(String userId, String mimeType, long fileSize, BufferedImage image, StoredAsset originalAsset,
+                                    StoredAsset thumbnailAsset, StoredAsset analysisAsset, String storageMode) {
+        MediaFile mediaFile = MediaFile.builder()
+                .userId(userId)
+                .storageMode(storageMode)
+                .originalBucket(originalAsset.bucket())
+                .originalObjectKey(originalAsset.objectKey())
+                .originalUrl(originalAsset.url())
+                .thumbBucket(thumbnailAsset != null ? thumbnailAsset.bucket() : null)
+                .thumbObjectKey(thumbnailAsset != null ? thumbnailAsset.objectKey() : null)
+                .thumbUrl(thumbnailAsset != null ? thumbnailAsset.url() : null)
+                .analysisBucket(analysisAsset != null ? analysisAsset.bucket() : null)
+                .analysisObjectKey(analysisAsset != null ? analysisAsset.objectKey() : null)
+                .analysisUrl(analysisAsset != null ? analysisAsset.url() : null)
+                .mimeType(mimeType)
+                .width(image != null ? image.getWidth() : null)
+                .height(image != null ? image.getHeight() : null)
+                .fileSize(fileSize)
+                .build();
+        return mediaFileRepository.save(mediaFile);
+    }
+
+    private StoredAsset toStoredAsset(ObjectStorageService.StoredObject storedObject) {
+        return new StoredAsset(storedObject.getBucket(), storedObject.getObjectKey(), storedObject.getUrl());
+    }
+
+    private record StoredAsset(String bucket, String objectKey, String url) {}
 
     private void writeJpeg(BufferedImage image, Path outputPath, float quality) throws IOException {
         Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpg");

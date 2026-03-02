@@ -5,6 +5,7 @@ import com.wedding.api.dto.AiInvitationImageResponse;
 import com.wedding.api.dto.AiInvitationPromptRequest;
 import com.wedding.api.dto.InvitationRequest;
 import com.wedding.api.entity.Invitation;
+import com.wedding.api.service.AiGenerationHistoryService;
 import com.wedding.api.service.InvitationService;
 import com.wedding.api.service.OpenAiInvitationService;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ public class InvitationController {
 
     private final InvitationService invitationService;
     private final OpenAiInvitationService openAiInvitationService;
+    private final AiGenerationHistoryService aiGenerationHistoryService;
 
     @GetMapping("/my")
     public ResponseEntity<?> myInvitations(Authentication auth) {
@@ -80,11 +82,14 @@ public class InvitationController {
     @PostMapping("/upload")
     public ResponseEntity<?> upload(@RequestParam("file") MultipartFile file, Authentication auth) {
         try {
-            InvitationService.UploadResult result = invitationService.uploadFile(file);
+            String userId = (String) auth.getPrincipal();
+            InvitationService.UploadResult result = invitationService.uploadFile(file, userId);
             return ResponseEntity.ok(Map.of(
                     "success", true,
                     "url", result.url(),
-                    "thumbnailUrl", result.thumbnailUrl()
+                    "thumbnailUrl", result.thumbnailUrl(),
+                    "analysisImageUrl", result.analysisImageUrl(),
+                    "mediaFileId", result.mediaFileId()
             ));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", "업로드 실패"));
@@ -94,11 +99,20 @@ public class InvitationController {
     @PostMapping("/ai-generate-from-image")
     public ResponseEntity<?> generateFromImage(@RequestBody AiInvitationImageRequest req, Authentication auth) {
         try {
+            String userId = (String) auth.getPrincipal();
             String analysisImageUrl = req.getAnalysisImageUrl();
             if (analysisImageUrl == null || analysisImageUrl.isBlank()) {
                 analysisImageUrl = req.getPhotoUrl();
             }
             AiInvitationImageResponse result = openAiInvitationService.generateFromReference(analysisImageUrl, req.getImageStyle(), req.getModelAlias());
+            aiGenerationHistoryService.record(
+                    userId,
+                    req.getSourceImageId(),
+                    analysisImageUrl,
+                    "invitation_image",
+                    req.getModelAlias(),
+                    result
+            );
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -108,6 +122,7 @@ public class InvitationController {
     @PostMapping("/ai-generate-from-prompt")
     public ResponseEntity<?> generateFromPrompt(@RequestBody AiInvitationPromptRequest req, Authentication auth) {
         try {
+            String userId = (String) auth.getPrincipal();
             String analysisImageUrl = req.getAnalysisImageUrl();
             if (analysisImageUrl == null || analysisImageUrl.isBlank()) {
                 analysisImageUrl = req.getPhotoUrl();
@@ -117,6 +132,14 @@ public class InvitationController {
                 analysisImageUrl,
                 req.getImageStyle(),
                 req.getModelAlias()
+            );
+            aiGenerationHistoryService.record(
+                    userId,
+                    req.getSourceImageId(),
+                    analysisImageUrl,
+                    "invitation_prompt",
+                    req.getModelAlias(),
+                    result
             );
             return ResponseEntity.ok(result);
         } catch (Exception e) {
