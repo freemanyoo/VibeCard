@@ -1,0 +1,29 @@
+spring:
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/vibecard}
+    driver-class-name: org.postgresql.Driver
+    username: ${DATABASE_USERNAME:vibecard}
+    password: ${DATABASE_PASSWORD:change-me}
+  h2:
+    console:
+      enabled: false
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:update}
+
+# Temporary compatibility path until uploads move fully to MinIO.
+upload:
+  dir: ${UPLOAD_DIR:/volume1/docker/vibecard/uploads}
+
+storage:
+  minio:
+    fast:
+      endpoint: ${MINIO_FAST_ENDPOINT:}
+      access-key: ${MINIO_FAST_ACCESS_KEY:}
+      secret-key: ${MINIO_FAST_SECRET_KEY:}
+      bucket: ${MINIO_FAST_BUCKET:vibecard-fast}
+    cold:
+      endpoint: ${MINIO_COLD_ENDPOINT:}
+      access-key: ${MINIO_COLD_ACCESS_KEY:}
+      secret-key: ${MINIO_COLD_SECRET_KEY:}
+      bucket: ${MINIO_COLD_BUCKET:vibecard-cold}
