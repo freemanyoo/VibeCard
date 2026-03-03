@@ -3,10 +3,10 @@ WORKDIR /workspace
 
 COPY build.gradle settings.gradle gradlew gradlew.bat ./
 COPY gradle ./gradle
-RUN ./gradlew dependencies --no-daemon
+RUN gradle dependencies --no-daemon
 
 COPY src ./src
-RUN ./gradlew bootJar --no-daemon
+RUN gradle bootJar --no-daemon
 
 FROM eclipse-temurin:17-jre
 WORKDIR /app

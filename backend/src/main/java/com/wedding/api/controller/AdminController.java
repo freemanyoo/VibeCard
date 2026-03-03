@@ -5,11 +5,15 @@ import com.wedding.api.dto.SkinAiGenerateRequest;
 import com.wedding.api.entity.Skin;
 import com.wedding.api.service.AdminService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
@@ -24,7 +28,14 @@ public class AdminController {
 
     @GetMapping("/skins")
     public ResponseEntity<?> getSkins() {
-        return ResponseEntity.ok(Map.of("skins", adminService.getSkins()));
+        try {
+            List<Skin> skins = adminService.getSkins();
+            return ResponseEntity.ok(Map.of("skins", skins));
+        } catch (Exception e) {
+            log.error("GET /admin/skins failed", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", e.getMessage() != null ? e.getMessage() : "스킨 목록 조회 실패"));
+        }
     }
 
     @GetMapping("/skins/ai-model-options")

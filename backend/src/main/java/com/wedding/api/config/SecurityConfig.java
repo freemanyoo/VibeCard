@@ -94,8 +94,10 @@ public class SecurityConfig {
         config.setAllowedOriginPatterns(List.of(
             "http://localhost:3000",
             "http://127.0.0.1:3000",
+            "http://192.168.50.94:8088",
             "http://100.*.*.*:3000",
-            "https://macbookpro.tail3bef65.ts.net"
+            "https://macbookpro.tail3bef65.ts.net",
+            "https://vibecard.nextfreemanyoo.myds.me"
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));

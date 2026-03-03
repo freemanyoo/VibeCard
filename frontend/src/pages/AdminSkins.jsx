@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, Edit2, Check, X, Palette, Type, Palette as PaletteIcon, ChevronDown, ChevronLeft, ChevronRight, Smartphone, Monitor, LayoutDashboard, Globe, Wand2 } from "lucide-react";
+import { Plus, Trash2, Edit2, Check, X, Palette, Type, Palette as PaletteIcon, ChevronDown, ChevronLeft, ChevronRight, Smartphone, Monitor, LayoutDashboard, Globe, Wand2, Upload } from "lucide-react";
 import api from "../lib/api";
 import { TYPO_DEFAULTS, getTypoForTemplate } from "../lib/skinDefaults";
 import InvitationView from "../components/InvitationView";
@@ -41,6 +41,10 @@ const FONTS = [
   { name: "Crimson Text", value: "'Crimson Text', serif", category: "영문" },
 ];
 
+const EDITOR_BASE_W = 303;
+const EDITOR_BASE_H = 440;
+const EDITOR_BASE_RATIO = EDITOR_BASE_W / EDITOR_BASE_H;
+
 const defaultConfig = {
   theme: "modern",
   textScale: 100,
@@ -72,6 +76,7 @@ const defaultConfig = {
   bottomImageGradient: 0,
   mainPhotoZoom: 100,
   mainPhotoAspectRatio: 1,
+  mainPhotoPosition: "50% 50%",
   saveTheDateText: "",
   mainTitleText: "",
   groomDisplayName: "",
@@ -547,7 +552,7 @@ export default function AdminSkins() {
   const [selectedElement, setSelectedElement] = useState(null);
   const [previewMode, setPreviewMode] = useState("mobile"); // "mobile" | "web"
   const [name, setName] = useState(""); const [slug, setSlug] = useState(""); const [description, setDescription] = useState(""); const [thumbnail, setThumbnail] = useState("");
-  const [config, setConfig] = useState({...defaultConfig});
+  const [config, setConfig] = useState({ ...defaultConfig });
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiModel, setAiModel] = useState("openai");
   const [aiLocalPurpose, setAiLocalPurpose] = useState("general");
@@ -556,7 +561,243 @@ export default function AdminSkins() {
   const [pickedTextKey, setPickedTextKey] = useState(null);
   const [showAdvancedTypography, setShowAdvancedTypography] = useState(false);
 
-  useEffect(() => { api.get("/admin/skins").then((res)=>setSkins(res.data.skins)).catch(console.error).finally(()=>setLoading(false)); }, []);
+  // --- Photo Editor State & Refs ---
+  const editorPhotoContainerRef = useRef(null);
+  const previewPhotoContainerRef = useRef(null);
+  const prevImageStyleRef = useRef(String(config.imageStyle || "standard"));
+  const isPhotoDraggingRef = useRef(false);
+  const isPointerDownRef = useRef(false);
+  const dragStart = useRef({ x: 0, y: 0, pos: "", lockX: false, lockY: false, fixedX: 50, fixedY: 0 });
+  const pendingPosRef = useRef("");
+  const hasDraggedRef = useRef(false);
+
+  const photoFit = "cover";
+  const photoZoom = config.mainPhotoZoom ?? 100;
+  const photoAspectRatio = config.mainPhotoAspectRatio ?? 1;
+  const photoPosition = config.mainPhotoPosition || "50% 50%";
+
+  const parsePhotoPosition = (pos) => {
+    const [rawX = "50%", rawY = "50%"] = String(pos || "50% 50%").trim().split(/\s+/);
+    const toPercent = (v) => {
+      const n = Number.parseFloat(String(v).replace("%", ""));
+      return Number.isNaN(n) ? "50%" : `${Math.max(0, Math.min(100, n))}%`;
+    };
+    return { x: toPercent(rawX), y: toPercent(rawY) };
+  };
+
+  const getCoverMetrics = (containerRatio) => {
+    const ratio = photoAspectRatio || 1;
+    const safeRatio = containerRatio > 0 ? containerRatio : EDITOR_BASE_RATIO;
+    const baseW = ratio >= safeRatio ? (ratio / safeRatio) * 100 : 100;
+    const baseH = ratio >= safeRatio ? 100 : (safeRatio / ratio) * 100;
+    const shouldClamp = String(config.imageStyle || "standard") === "full" && ratio < safeRatio;
+    const minScale = shouldClamp ? 1 : 0.4;
+    const scale = Math.max(minScale, Math.min(180, photoZoom) / 100);
+    const width = baseW * scale;
+    const height = baseH * scale;
+    return { width, height, lockX: width <= 100, lockY: height <= 100 };
+  };
+
+  const getContainerRatio = (el) => {
+    if (!el) return EDITOR_BASE_RATIO;
+    const w = el.clientWidth;
+    const h = el.clientHeight;
+    return w > 0 && h > 0 ? (w / h) : EDITOR_BASE_RATIO;
+  };
+
+  const getEditorCoverMetrics = () => getCoverMetrics(EDITOR_BASE_RATIO);
+  const getEditorCoverBgSize = () => {
+    const m = getEditorCoverMetrics();
+    const bgW = (EDITOR_BASE_W * m.width) / 100;
+    const bgH = (EDITOR_BASE_H * m.height) / 100;
+    return `${bgW}px ${bgH}px`;
+  };
+  const getEditorCoverBgPosition = () => {
+    const m = getEditorCoverMetrics();
+    const x = m.lockX ? "50%" : "var(--photo-x, 50%)";
+    const y = m.lockY ? "0%" : "var(--photo-y, 50%)";
+    return `${x} ${y}`;
+  };
+  const getEditorMinZoom = () => {
+    const ratio = photoAspectRatio || 1;
+    const shouldClamp = String(config.imageStyle || "standard") === "full" && ratio < EDITOR_BASE_RATIO;
+    return shouldClamp ? 100 : 40;
+  };
+  const normalizeCoverPosition = (pos, containerRatio) => {
+    const m = getCoverMetrics(containerRatio);
+    const parsed = parsePhotoPosition(pos);
+    const xNum = Number.parseFloat(String(parsed.x).replace("%", ""));
+    const yNum = Number.parseFloat(String(parsed.y).replace("%", ""));
+    const nx = m.lockX ? 50 : Math.max(0, Math.min(100, Number.isNaN(xNum) ? 50 : xNum));
+    const ny = m.lockY ? 0 : Math.max(0, Math.min(100, Number.isNaN(yNum) ? 50 : yNum));
+    return `${nx}% ${ny}%`;
+  };
+
+  const fallbackImage = "https://images.unsplash.com/photo-1465495976277-4387d4b0b4c6?q=80&w=1200&auto=format&fit=crop";
+  const displayPhotoUrl = thumbnail || fallbackImage;
+
+  useEffect(() => {
+    if (!displayPhotoUrl) return;
+    const minZoom = getEditorMinZoom();
+    if (photoZoom < minZoom) updateConfig({ mainPhotoZoom: minZoom });
+  }, [config.imageStyle, photoAspectRatio, displayPhotoUrl, photoZoom]);
+
+  useEffect(() => {
+    if (!displayPhotoUrl) return;
+    const img = new Image();
+    img.onload = () => {
+      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+        updateConfig({ mainPhotoAspectRatio: img.naturalWidth / img.naturalHeight });
+      }
+    };
+    img.src = displayPhotoUrl;
+  }, [displayPhotoUrl]);
+
+  useEffect(() => {
+    if (!displayPhotoUrl) return;
+    const previewRatio = getContainerRatio(previewPhotoContainerRef.current);
+    const normalized = normalizeCoverPosition(photoPosition, previewRatio);
+    if (normalized !== photoPosition) {
+      updateConfig({ mainPhotoPosition: normalized });
+      return;
+    }
+    applyPhotoPositionVars(normalized);
+  }, [photoZoom, photoAspectRatio, displayPhotoUrl]);
+
+  useEffect(() => {
+    if (!displayPhotoUrl) {
+      prevImageStyleRef.current = String(config.imageStyle || "standard");
+      return;
+    }
+    const currentImageStyle = String(config.imageStyle || "standard");
+    if (prevImageStyleRef.current === currentImageStyle) return;
+    prevImageStyleRef.current = currentImageStyle;
+    requestAnimationFrame(() => {
+      const previewRatio = getContainerRatio(previewPhotoContainerRef.current);
+      const normalized = normalizeCoverPosition(photoPosition, previewRatio);
+      if (normalized !== photoPosition) {
+        updateConfig({ mainPhotoPosition: normalized });
+        return;
+      }
+      applyPhotoPositionVars(normalized);
+    });
+  }, [config.imageStyle, displayPhotoUrl, photoPosition]);
+
+  const applyPhotoPositionVars = (pos) => {
+    const { x, y } = parsePhotoPosition(pos);
+    [previewPhotoContainerRef.current, editorPhotoContainerRef.current].forEach((el) => {
+      if (!el) return;
+      el.style.setProperty("--photo-x", x);
+      el.style.setProperty("--photo-y", y);
+    });
+  };
+
+  useEffect(() => {
+    if (isPointerDownRef.current) return;
+    applyPhotoPositionVars(photoPosition);
+  }, [photoPosition]);
+
+  const startPointer = (clientX, clientY, containerRatio) => {
+    hasDraggedRef.current = false;
+    const m = getCoverMetrics(containerRatio);
+    const parsed = parsePhotoPosition(photoPosition);
+    const x = m.lockX ? "50%" : parsed.x;
+    const y = m.lockY ? "0%" : parsed.y;
+    const pos = `${x} ${y}`;
+    dragStart.current = { x: clientX, y: clientY, pos, lockX: m.lockX, lockY: m.lockY, fixedX: 50, fixedY: 0 };
+    pendingPosRef.current = pos;
+    applyPhotoPositionVars(pos);
+    isPointerDownRef.current = true;
+    document.body.style.userSelect = "none";
+  };
+  const handleMouseDown = (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    startPointer(e.clientX, e.clientY, getContainerRatio(e.currentTarget));
+  };
+  const handlePhotoClick = (xPercent, yPercent, containerRatio) => {
+    if (hasDraggedRef.current) return;
+    const m = getCoverMetrics(containerRatio);
+    const x = m.lockX ? 50 : xPercent;
+    const y = m.lockY ? 0 : yPercent;
+    updateConfig({ mainPhotoPosition: `${x}% ${y}%` });
+  };
+  const getClient = (e) => (e.touches ? e.touches[0] : e.changedTouches ? e.changedTouches[0] : e);
+  const handleTouchStart = (e) => {
+    const t = getClient(e);
+    if (!t) return;
+    e.preventDefault();
+    startPointer(t.clientX, t.clientY, getContainerRatio(e.currentTarget));
+  };
+
+  useEffect(() => {
+    const dragThreshold = 3;
+    const onMove = (e) => {
+      if (!isPointerDownRef.current) return;
+      const c = e.touches ? e.touches[0] : e;
+      const cp = dragStart.current.pos.split(/\s+/);
+      const dx = c.clientX - dragStart.current.x;
+      const dy = c.clientY - dragStart.current.y;
+      if (!isPhotoDraggingRef.current && Math.abs(dx) < dragThreshold && Math.abs(dy) < dragThreshold) return;
+      e.preventDefault();
+      hasDraggedRef.current = true;
+      if (!isPhotoDraggingRef.current) {
+        isPhotoDraggingRef.current = true;
+        document.body.style.cursor = "grabbing";
+        document.body.style.userSelect = "none";
+      }
+      const startX = parseFloat(String(cp[0]).replace("%", ""));
+      const startY = parseFloat(String(cp[1]).replace("%", ""));
+      const nx = dragStart.current.lockX ? dragStart.current.fixedX : Math.max(0, Math.min(100, startX - dx / 1.5));
+      const ny = dragStart.current.lockY ? dragStart.current.fixedY : Math.max(0, Math.min(100, startY - dy / 1.5));
+      const next = `${nx}% ${ny}%`;
+      pendingPosRef.current = next;
+      applyPhotoPositionVars(next);
+    };
+    const onUp = () => {
+      if (!isPointerDownRef.current) return;
+      isPointerDownRef.current = false;
+      if (hasDraggedRef.current) {
+        const finalPos = pendingPosRef.current ?? dragStart.current.pos;
+        pendingPosRef.current = finalPos;
+        updateConfig({ mainPhotoPosition: finalPos });
+        applyPhotoPositionVars(finalPos);
+      }
+      isPhotoDraggingRef.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.addEventListener("mousemove", onMove, { passive: false });
+    document.addEventListener("mouseup", onUp);
+    document.addEventListener("touchmove", onMove, { passive: false });
+    document.addEventListener("touchend", onUp);
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.removeEventListener("touchmove", onMove);
+      document.removeEventListener("touchend", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, []);
+
+  const handleThumbnailUpload = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const data = new FormData(); data.append("file", file);
+    try {
+      const res = await api.post("/invitations/upload", data, { headers: { "Content-Type": "multipart/form-data" } });
+      if (res.data.success && res.data.url) {
+        setThumbnail(res.data.url);
+      } else {
+        alert("업로드 실패");
+      }
+    } catch {
+      alert("업로드 실패");
+    }
+  };
+  // --- End Photo Editor ---
+
+  useEffect(() => { api.get("/admin/skins").then((res) => setSkins(res.data.skins)).catch(console.error).finally(() => setLoading(false)); }, []);
   useEffect(() => {
     api.get("/admin/skins/ai-model-options")
       .then((res) => {
@@ -570,8 +811,8 @@ export default function AdminSkins() {
         setAiLocalPurposeOptions(AI_LOCAL_PURPOSE_OPTIONS);
       });
   }, []);
-  const updateConfig = (u) => setConfig((p)=>({...p,...u}));
-  const resetForm = () => { setName(""); setSlug(""); setDescription(""); setThumbnail(""); setConfig({...defaultConfig}); setAiPrompt(""); setAiModel("openai"); setAiLocalPurpose("general"); setPickedTextKey(null); setShowAdvancedTypography(false); };
+  const updateConfig = (u) => setConfig((p) => ({ ...p, ...u }));
+  const resetForm = () => { setName(""); setSlug(""); setDescription(""); setThumbnail(""); setConfig({ ...defaultConfig }); setAiPrompt(""); setAiModel("openai"); setAiLocalPurpose("general"); setPickedTextKey(null); setShowAdvancedTypography(false); };
 
   const handleAiGenerate = async () => {
     if (!aiPrompt.trim()) return alert("AI 프롬프트를 입력해 주세요.");
@@ -643,32 +884,32 @@ ${fontCatalogText}
   }, [slug, isAdding, editingId]);
 
   const handleCreate = async () => {
-    if(!name||!slug) return alert("이름과 슬러그를 입력해주세요.");
+    if (!name || !slug) return alert("이름과 슬러그를 입력해주세요.");
     try {
       const configToSave = normalizeConfigForSave(config);
-      const res = await api.post("/admin/skins",{name,slug,description,config:JSON.stringify(configToSave),thumbnail});
-      if(res.data.success){
-        setSkins([res.data.skin,...skins]);
+      const res = await api.post("/admin/skins", { name, slug, description, config: JSON.stringify(configToSave), thumbnail });
+      if (res.data.success) {
+        setSkins([res.data.skin, ...skins]);
         setConfig(configToSave);
         setIsAdding(false);
         resetForm();
       }
-    } catch(e){alert(e.response?.data?.error||e.message);}
+    } catch (e) { alert(e.response?.data?.error || e.message); }
   };
   const handleUpdate = async (id) => {
-    try{
+    try {
       const configToSave = normalizeConfigForSave(config);
-      const res=await api.put(`/admin/skins/${id}`,{name,description,config:JSON.stringify(configToSave),thumbnail});
-      if(res.data.success){
-        setSkins(skins.map(s=>s.id===id?{...s,name,description,config:JSON.stringify(configToSave),thumbnail}:s));
+      const res = await api.put(`/admin/skins/${id}`, { name, description, config: JSON.stringify(configToSave), thumbnail });
+      if (res.data.success) {
+        setSkins(skins.map(s => s.id === id ? { ...s, name, description, config: JSON.stringify(configToSave), thumbnail } : s));
         setConfig(configToSave);
         setEditingId(null);
         resetForm();
         alert("저장되었습니다. 변경한 색상·설정이 DB에 반영되었습니다.");
       }
-    }catch(e){alert(e.response?.data?.error||e.message);}
+    } catch (e) { alert(e.response?.data?.error || e.message); }
   };
-  const handleDelete = async (id) => { if(!confirm("정말 삭제하시겠습니까?"))return; try{const res=await api.delete(`/admin/skins/${id}`);if(res.data.success)setSkins(skins.filter(s=>s.id!==id));}catch(e){alert(e.response?.data?.error||e.message);} };
+  const handleDelete = async (id) => { if (!confirm("정말 삭제하시겠습니까?")) return; try { const res = await api.delete(`/admin/skins/${id}`); if (res.data.success) setSkins(skins.filter(s => s.id !== id)); } catch (e) { alert(e.response?.data?.error || e.message); } };
   const startEdit = (skin) => {
     setEditingId(skin.id);
     setName(skin.name);
@@ -756,9 +997,9 @@ ${fontCatalogText}
     return () => window.removeEventListener("resize", updateScale);
   }, []);
 
-  if(loading) return <div className="min-h-screen flex items-center justify-center"><div className="text-zinc-400 text-sm">로딩 중...</div></div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="text-zinc-400 text-sm">로딩 중...</div></div>;
 
-  if(isAdding||editingId) {
+  if (isAdding || editingId) {
     const template = slug || "modern";
     const typoFallback = getTypoForTemplate(template);
     const previewConfig = { ...typoFallback, ...config, mainPhotoZoom: config.mainPhotoZoom ?? 100, mainPhotoAspectRatio: config.mainPhotoAspectRatio ?? 1 };
@@ -768,9 +1009,9 @@ ${fontCatalogText}
       venueName: "아름다운 웨딩홀", venueAddress: "서울특별시 강남구 테헤란로 123",
       invitationTitle: "우리\n결혼합니다",
       invitationMessage: "약속된 시간이 다가와\n사랑의 결실을 맺으려 합니다.\n오직 사랑 하나로 맺어지는\n저희의 축복된 시작을 함께해 주십시오.",
-      mainPhotoUrl: thumbnail || "https://images.unsplash.com/photo-1465495976277-4387d4b0b4c6?q=80&w=1200&auto=format&fit=crop",
+      mainPhotoUrl: displayPhotoUrl,
       mainPhotoFit: "cover",
-      mainPhotoPosition: "50% 50%",
+      mainPhotoPosition: config.mainPhotoPosition || "50% 50%",
       groomFather: "김아빠", groomMother: "이엄마", groomRelation: "차남", groomPhone: "010-1234-5678",
       brideFather: "이아빠", brideMother: "박엄마", brideRelation: "장녀", bridePhone: "010-9876-5432",
       dDayEnabled: true, navigationEnabled: true,
@@ -788,12 +1029,12 @@ ${fontCatalogText}
     return (
       <div className="fixed inset-x-0 bottom-0 top-[56px] bg-white z-[90] flex">
         <div className="w-[400px] h-full border-r border-zinc-100 flex flex-col bg-zinc-50/50">
-          <div className="p-6 border-b border-zinc-100 bg-white flex justify-between items-center"><div className="flex items-center gap-2"><div className="p-2 bg-zinc-900 rounded-xl text-white"><PaletteIcon size={18}/></div><h2 className="font-black text-zinc-900">{editingId?"스킨 수정":"새 스킨 디자인"}</h2></div><button onClick={()=>{setIsAdding(false);setEditingId(null);}} className="p-2 text-zinc-300 hover:text-black hover:bg-zinc-100 rounded-lg"><X size={20}/></button></div>
+          <div className="p-6 border-b border-zinc-100 bg-white flex justify-between items-center"><div className="flex items-center gap-2"><div className="p-2 bg-zinc-900 rounded-xl text-white"><PaletteIcon size={18} /></div><h2 className="font-black text-zinc-900">{editingId ? "스킨 수정" : "새 스킨 디자인"}</h2></div><button onClick={() => { setIsAdding(false); setEditingId(null); }} className="p-2 text-zinc-300 hover:text-black hover:bg-zinc-100 rounded-lg"><X size={20} /></button></div>
           <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-hide">
-            <div className="space-y-4"><h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2"><Globe size={12}/> 기본 정보</h3>
-              <input value={name} onChange={(e)=>setName(e.target.value)} placeholder="스킨 이름" className="w-full px-4 py-3 bg-white border border-zinc-100 rounded-xl text-sm shadow-sm" />
-              <input value={slug} onChange={(e)=>setSlug(e.target.value)} disabled={!!editingId} placeholder="고유 키" className="w-full px-4 py-3 bg-white border border-zinc-100 rounded-xl text-sm shadow-sm disabled:opacity-50" />
-              <textarea value={description} onChange={(e)=>setDescription(e.target.value)} placeholder="설명..." className="w-full px-4 py-3 bg-white border border-zinc-100 rounded-xl text-sm h-20 resize-none shadow-sm" />
+            <div className="space-y-4"><h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2"><Globe size={12} /> 기본 정보</h3>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="스킨 이름" className="w-full px-4 py-3 bg-white border border-zinc-100 rounded-xl text-sm shadow-sm" />
+              <input value={slug} onChange={(e) => setSlug(e.target.value)} disabled={!!editingId} placeholder="고유 키" className="w-full px-4 py-3 bg-white border border-zinc-100 rounded-xl text-sm shadow-sm disabled:opacity-50" />
+              <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="설명..." className="w-full px-4 py-3 bg-white border border-zinc-100 rounded-xl text-sm h-20 resize-none shadow-sm" />
               <div className="space-y-2.5 p-3 rounded-xl bg-zinc-50 border border-zinc-100">
                 <div className="flex items-center gap-1.5 text-[10px] font-black text-zinc-500 uppercase tracking-widest"><Wand2 size={12} /> AI 스킨 생성</div>
                 <textarea
@@ -837,7 +1078,7 @@ ${fontCatalogText}
             </div>
             <FontSelector config={config} updateConfig={updateConfig} selectedElement={selectedElement} setSelectedElement={setSelectedElement} />
             <div id="control-typography" className="space-y-6 p-4 rounded-2xl transition-all bg-white border border-zinc-100 shadow-sm">
-              <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-1.5"><Type size={12}/> 글자 크기</h3>
+              <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-1.5"><Type size={12} /> 글자 크기</h3>
               <p className="text-[9px] text-zinc-400">미리보기 텍스트를 클릭하면 해당 항목의 크기/색상을 여기서 바로 조절할 수 있습니다.</p>
               <div className="space-y-2">
                 <div className="flex justify-between text-[10px] font-bold text-zinc-500 uppercase">
@@ -937,33 +1178,13 @@ ${fontCatalogText}
                 {showAdvancedTypography ? "고급 텍스트 설정 숨기기" : "고급 텍스트 설정 열기"}
               </button>
               {showAdvancedTypography && (
-              <div className="space-y-4">
-                {[
-                  { label: "제목 크기", key: "titleSize", min: 20, max: 80 },
-                  { label: "이름 크기", key: "namesSize", min: 16, max: 60 },
-                  { label: "Save The Date 크기", key: "saveTheDateSize", min: 8, max: 24 },
-                  { label: "날짜 크기", key: "dateSize", min: 10, max: 30 },
-                  { label: "본문 크기", key: "contentSize", min: 12, max: 40 },
-                ].map((c) => {
-                  const val = config[c.key] ?? defaultConfig[c.key];
-                  const clamp = (n) => Math.max(c.min, Math.min(c.max, Number(n) || c.min));
-                  return (
-                    <div key={c.key} className="space-y-2">
-                      <div className="flex justify-between items-center gap-2">
-                        <span className="text-[10px] font-bold text-zinc-500 uppercase">{c.label}</span>
-                        <div className="flex items-center gap-1.5">
-                          <input type="number" min={c.min} max={c.max} value={val} onChange={(e) => updateConfig({ [c.key]: clamp(e.target.value) })} className="w-14 py-1.5 px-2 border border-zinc-200 rounded-lg text-xs font-mono text-right" />
-                          <span className="text-[10px] font-bold text-zinc-400">px</span>
-                        </div>
-                      </div>
-                      <input type="range" min={c.min} max={c.max} value={val} onChange={(e) => updateConfig({ [c.key]: Number(e.target.value) })} className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-900" />
-                    </div>
-                  );
-                })}
-                <div className="pt-3 border-t border-zinc-100 space-y-4">
+                <div className="space-y-4">
                   {[
-                    { label: "달력 제목 크기", key: "calendarTitleSize", min: 16, max: 44 },
-                    { label: "달력 날짜 크기", key: "calendarDaySize", min: 10, max: 26 },
+                    { label: "제목 크기", key: "titleSize", min: 20, max: 80 },
+                    { label: "이름 크기", key: "namesSize", min: 16, max: 60 },
+                    { label: "Save The Date 크기", key: "saveTheDateSize", min: 8, max: 24 },
+                    { label: "날짜 크기", key: "dateSize", min: 10, max: 30 },
+                    { label: "본문 크기", key: "contentSize", min: 12, max: 40 },
                   ].map((c) => {
                     const val = config[c.key] ?? defaultConfig[c.key];
                     const clamp = (n) => Math.max(c.min, Math.min(c.max, Number(n) || c.min));
@@ -980,152 +1201,231 @@ ${fontCatalogText}
                       </div>
                     );
                   })}
-                </div>
-                <div className="pt-3 border-t border-zinc-100 space-y-4">
-                  {[
-                    { label: "Gallery 제목", key: "galleryTitleSize", min: 8, max: 32 },
-                    { label: "Location 제목", key: "locationTitleSize", min: 8, max: 32 },
-                    { label: "Account 제목", key: "accountTitleSize", min: 8, max: 32 },
-                    { label: "참석 여부 제목", key: "attendanceTitleSize", min: 8, max: 32 },
-                  ].map((c) => {
-                    const val = config[c.key] ?? defaultConfig[c.key];
-                    const clamp = (n) => Math.max(c.min, Math.min(c.max, Number(n) || c.min));
-                    return (
-                      <div key={c.key} className="space-y-2">
-                        <div className="flex justify-between items-center gap-2">
-                          <span className="text-[10px] font-bold text-zinc-500 uppercase">{c.label}</span>
-                          <div className="flex items-center gap-1.5">
-                            <input type="number" min={c.min} max={c.max} value={val} onChange={(e) => updateConfig({ [c.key]: clamp(e.target.value) })} className="w-14 py-1.5 px-2 border border-zinc-200 rounded-lg text-xs font-mono text-right" />
-                            <span className="text-[10px] font-bold text-zinc-400">px</span>
+                  <div className="pt-3 border-t border-zinc-100 space-y-4">
+                    {[
+                      { label: "달력 제목 크기", key: "calendarTitleSize", min: 16, max: 44 },
+                      { label: "달력 날짜 크기", key: "calendarDaySize", min: 10, max: 26 },
+                    ].map((c) => {
+                      const val = config[c.key] ?? defaultConfig[c.key];
+                      const clamp = (n) => Math.max(c.min, Math.min(c.max, Number(n) || c.min));
+                      return (
+                        <div key={c.key} className="space-y-2">
+                          <div className="flex justify-between items-center gap-2">
+                            <span className="text-[10px] font-bold text-zinc-500 uppercase">{c.label}</span>
+                            <div className="flex items-center gap-1.5">
+                              <input type="number" min={c.min} max={c.max} value={val} onChange={(e) => updateConfig({ [c.key]: clamp(e.target.value) })} className="w-14 py-1.5 px-2 border border-zinc-200 rounded-lg text-xs font-mono text-right" />
+                              <span className="text-[10px] font-bold text-zinc-400">px</span>
+                            </div>
                           </div>
+                          <input type="range" min={c.min} max={c.max} value={val} onChange={(e) => updateConfig({ [c.key]: Number(e.target.value) })} className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-900" />
                         </div>
-                        <input type="range" min={c.min} max={c.max} value={val} onChange={(e) => updateConfig({ [c.key]: Number(e.target.value) })} className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-900" />
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="pt-3 border-t border-zinc-100 space-y-4">
-                  {[
-                    { label: "Location 주소", key: "locationAddressSize", min: 10, max: 28 },
-                    { label: "내비 버튼 텍스트", key: "navButtonTextSize", min: 8, max: 20 },
-                    { label: "Account 보조문구", key: "accountSubtitleSize", min: 9, max: 24 },
-                    { label: "계좌 토글(신랑측/신부측)", key: "accountToggleLabelSize", min: 9, max: 24 },
-                    { label: "계좌 상단(은행/Copy)", key: "accountHeaderSize", min: 8, max: 24 },
-                    { label: "계좌 정보(번호/예금주)", key: "accountInfoSize", min: 12, max: 36 },
-                  ].map((c) => {
-                    const val = config[c.key] ?? defaultConfig[c.key];
-                    const clamp = (n) => Math.max(c.min, Math.min(c.max, Number(n) || c.min));
-                    return (
-                      <div key={c.key} className="space-y-2">
-                        <div className="flex justify-between items-center gap-2">
-                          <span className="text-[10px] font-bold text-zinc-500 uppercase">{c.label}</span>
-                          <div className="flex items-center gap-1.5">
-                            <input type="number" min={c.min} max={c.max} value={val} onChange={(e) => updateConfig({ [c.key]: clamp(e.target.value) })} className="w-14 py-1.5 px-2 border border-zinc-200 rounded-lg text-xs font-mono text-right" />
-                            <span className="text-[10px] font-bold text-zinc-400">px</span>
+                      );
+                    })}
+                  </div>
+                  <div className="pt-3 border-t border-zinc-100 space-y-4">
+                    {[
+                      { label: "Gallery 제목", key: "galleryTitleSize", min: 8, max: 32 },
+                      { label: "Location 제목", key: "locationTitleSize", min: 8, max: 32 },
+                      { label: "Account 제목", key: "accountTitleSize", min: 8, max: 32 },
+                      { label: "참석 여부 제목", key: "attendanceTitleSize", min: 8, max: 32 },
+                    ].map((c) => {
+                      const val = config[c.key] ?? defaultConfig[c.key];
+                      const clamp = (n) => Math.max(c.min, Math.min(c.max, Number(n) || c.min));
+                      return (
+                        <div key={c.key} className="space-y-2">
+                          <div className="flex justify-between items-center gap-2">
+                            <span className="text-[10px] font-bold text-zinc-500 uppercase">{c.label}</span>
+                            <div className="flex items-center gap-1.5">
+                              <input type="number" min={c.min} max={c.max} value={val} onChange={(e) => updateConfig({ [c.key]: clamp(e.target.value) })} className="w-14 py-1.5 px-2 border border-zinc-200 rounded-lg text-xs font-mono text-right" />
+                              <span className="text-[10px] font-bold text-zinc-400">px</span>
+                            </div>
                           </div>
+                          <input type="range" min={c.min} max={c.max} value={val} onChange={(e) => updateConfig({ [c.key]: Number(e.target.value) })} className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-900" />
                         </div>
-                        <input type="range" min={c.min} max={c.max} value={val} onChange={(e) => updateConfig({ [c.key]: Number(e.target.value) })} className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-900" />
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="pt-3 border-t border-zinc-100 space-y-4">
-                  {[
-                    { label: "참석 안내문", key: "attendanceDescSize", min: 10, max: 24 },
-                    { label: "폼 라벨(성함/구분/참석여부/참석인원/식사여부/메모/작성자/메시지)", key: "attendanceLabelSize", min: 9, max: 20 },
-                    { label: "참석 옵션 텍스트", key: "attendanceOptionTextSize", min: 10, max: 24 },
-                    { label: "폼 placeholder", key: "formPlaceholderSize", min: 10, max: 24 },
-                  ].map((c) => {
-                    const val = config[c.key] ?? defaultConfig[c.key];
-                    const clamp = (n) => Math.max(c.min, Math.min(c.max, Number(n) || c.min));
-                    return (
-                      <div key={c.key} className="space-y-2">
-                        <div className="flex justify-between items-center gap-2">
-                          <span className="text-[10px] font-bold text-zinc-500 uppercase">{c.label}</span>
-                          <div className="flex items-center gap-1.5">
-                            <input type="number" min={c.min} max={c.max} value={val} onChange={(e) => updateConfig({ [c.key]: clamp(e.target.value) })} className="w-14 py-1.5 px-2 border border-zinc-200 rounded-lg text-xs font-mono text-right" />
-                            <span className="text-[10px] font-bold text-zinc-400">px</span>
+                      );
+                    })}
+                  </div>
+                  <div className="pt-3 border-t border-zinc-100 space-y-4">
+                    {[
+                      { label: "Location 주소", key: "locationAddressSize", min: 10, max: 28 },
+                      { label: "내비 버튼 텍스트", key: "navButtonTextSize", min: 8, max: 20 },
+                      { label: "Account 보조문구", key: "accountSubtitleSize", min: 9, max: 24 },
+                      { label: "계좌 토글(신랑측/신부측)", key: "accountToggleLabelSize", min: 9, max: 24 },
+                      { label: "계좌 상단(은행/Copy)", key: "accountHeaderSize", min: 8, max: 24 },
+                      { label: "계좌 정보(번호/예금주)", key: "accountInfoSize", min: 12, max: 36 },
+                    ].map((c) => {
+                      const val = config[c.key] ?? defaultConfig[c.key];
+                      const clamp = (n) => Math.max(c.min, Math.min(c.max, Number(n) || c.min));
+                      return (
+                        <div key={c.key} className="space-y-2">
+                          <div className="flex justify-between items-center gap-2">
+                            <span className="text-[10px] font-bold text-zinc-500 uppercase">{c.label}</span>
+                            <div className="flex items-center gap-1.5">
+                              <input type="number" min={c.min} max={c.max} value={val} onChange={(e) => updateConfig({ [c.key]: clamp(e.target.value) })} className="w-14 py-1.5 px-2 border border-zinc-200 rounded-lg text-xs font-mono text-right" />
+                              <span className="text-[10px] font-bold text-zinc-400">px</span>
+                            </div>
                           </div>
+                          <input type="range" min={c.min} max={c.max} value={val} onChange={(e) => updateConfig({ [c.key]: Number(e.target.value) })} className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-900" />
                         </div>
-                        <input type="range" min={c.min} max={c.max} value={val} onChange={(e) => updateConfig({ [c.key]: Number(e.target.value) })} className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-900" />
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+                  <div className="pt-3 border-t border-zinc-100 space-y-4">
+                    {[
+                      { label: "참석 안내문", key: "attendanceDescSize", min: 10, max: 24 },
+                      { label: "폼 라벨(성함/구분/참석여부/참석인원/식사여부/메모/작성자/메시지)", key: "attendanceLabelSize", min: 9, max: 20 },
+                      { label: "참석 옵션 텍스트", key: "attendanceOptionTextSize", min: 10, max: 24 },
+                      { label: "폼 placeholder", key: "formPlaceholderSize", min: 10, max: 24 },
+                    ].map((c) => {
+                      const val = config[c.key] ?? defaultConfig[c.key];
+                      const clamp = (n) => Math.max(c.min, Math.min(c.max, Number(n) || c.min));
+                      return (
+                        <div key={c.key} className="space-y-2">
+                          <div className="flex justify-between items-center gap-2">
+                            <span className="text-[10px] font-bold text-zinc-500 uppercase">{c.label}</span>
+                            <div className="flex items-center gap-1.5">
+                              <input type="number" min={c.min} max={c.max} value={val} onChange={(e) => updateConfig({ [c.key]: clamp(e.target.value) })} className="w-14 py-1.5 px-2 border border-zinc-200 rounded-lg text-xs font-mono text-right" />
+                              <span className="text-[10px] font-bold text-zinc-400">px</span>
+                            </div>
+                          </div>
+                          <input type="range" min={c.min} max={c.max} value={val} onChange={(e) => updateConfig({ [c.key]: Number(e.target.value) })} className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-900" />
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
               )}
             </div>
             <div id="control-image" className={`space-y-6 p-4 rounded-2xl transition-all ${selectedElement === "image" ? "bg-zinc-100 ring-2 ring-zinc-900 shadow-lg" : "bg-white border border-zinc-100 shadow-sm"}`}>
-              <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-1.5"><PaletteIcon size={12}/> 메인 사진 스타일</h3>
+              <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-1.5"><PaletteIcon size={12} /> 메인 사진 스타일</h3>
               <div className="space-y-3">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase">표시 방식</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {[{id:"standard",name:"일반 박스"},{id:"full",name:"전체 배경"}].map((s)=>(
-                    <button key={s.id} onClick={()=>updateConfig({imageStyle:s.id})} className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${config.imageStyle===s.id?"bg-zinc-900 text-white shadow-lg":"bg-zinc-50 text-zinc-400 hover:bg-zinc-100"}`}>{s.name}</button>
+                  {[{ id: "standard", name: "일반 박스" }, { id: "full", name: "전체 배경" }].map((s) => (
+                    <button key={s.id} onClick={() => updateConfig({ imageStyle: s.id })} className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${config.imageStyle === s.id ? "bg-zinc-900 text-white shadow-lg" : "bg-zinc-50 text-zinc-400 hover:bg-zinc-100"}`}>{s.name}</button>
                   ))}
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-zinc-100 space-y-4">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase">대표 사진 (미리보기/썸네일용)</label>
+                {thumbnail && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); document.getElementById("admin-photo-upload")?.click(); }}
+                    className="w-full py-2.5 rounded-xl bg-zinc-900 text-white text-xs font-bold tracking-wide"
+                  >
+                    메인 사진 교체
+                  </button>
+                )}
+                <input id="admin-photo-upload" type="file" accept="image/*" onChange={handleThumbnailUpload} className="hidden" />
+                <div
+                  ref={editorPhotoContainerRef}
+                  className={`relative w-[303px] h-[440px] mx-auto bg-zinc-50 border-2 border-dashed border-zinc-200 rounded-2xl overflow-hidden cursor-grab`}
+                  style={{
+                    "--photo-x": parsePhotoPosition(photoPosition).x,
+                    "--photo-y": parsePhotoPosition(photoPosition).y,
+                  }}
+                  onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e); }}
+                  onTouchStart={(e) => { e.stopPropagation(); handleTouchStart(e); }}
+                >
+                  <div
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    style={{
+                      backgroundImage: `url("${displayPhotoUrl}")`,
+                      backgroundRepeat: "no-repeat",
+                      backgroundPosition: getEditorCoverBgPosition(),
+                      backgroundSize: getEditorCoverBgSize(),
+                    }}
+                  />
+                  {!thumbnail && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 text-white gap-2 pointer-events-none">
+                      <span className="text-[10px] font-bold">기본 제공 샘플 이미지입니다.</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-4 pt-2">
+                  <p className="text-[10px] text-zinc-400 text-center">사진을 드래그하면 위치를 조절할 수 있습니다.</p>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-zinc-500">
+                      <span>사진 크기</span>
+                      <span>{photoZoom}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={getEditorMinZoom()}
+                      max={180}
+                      value={photoZoom}
+                      onChange={(e) => updateConfig({ mainPhotoZoom: Math.max(getEditorMinZoom(), Number(e.target.value)) })}
+                      className="w-full h-1 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-900"
+                    />
+                  </div>
+
+
                 </div>
               </div>
             </div>
 
-            <div id="control-colors" className="space-y-6 p-4 rounded-2xl transition-all hover:bg-zinc-50" onClick={()=>setSelectedElement("colors")}>
-              <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2"><PaletteIcon size={12}/> 기본 색상</h3>
+            <div id="control-colors" className="space-y-6 p-4 rounded-2xl transition-all hover:bg-zinc-50" onClick={() => setSelectedElement("colors")}>
+              <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2"><PaletteIcon size={12} /> 기본 색상</h3>
               <div className="grid grid-cols-2 gap-4">
                 {[
-                  {label:"전체 배경",key:"bgColor"},
-                  {label:"섹션 배경",key:"subBgColor"},
-                  {label:"기본 글자",key:"textColor"},
-                  {label:"강조/포인트",key:"pointColor"},
-                ].map((item)=>(
-                  <div key={item.key} className="space-y-2"><label className="text-[10px] font-bold text-zinc-400 uppercase">{item.label}</label><div className="flex items-center gap-2"><input type="color" value={config[item.key]} onChange={(e)=>updateConfig({[item.key]:e.target.value})} className="w-10 h-10 rounded-lg cursor-pointer border-none bg-white p-1 shadow-sm" onClick={(e)=>e.stopPropagation()} /><span className="text-[10px] font-mono text-zinc-400 uppercase">{config[item.key]}</span></div></div>
+                  { label: "전체 배경", key: "bgColor" },
+                  { label: "섹션 배경", key: "subBgColor" },
+                  { label: "기본 글자", key: "textColor" },
+                  { label: "강조/포인트", key: "pointColor" },
+                ].map((item) => (
+                  <div key={item.key} className="space-y-2"><label className="text-[10px] font-bold text-zinc-400 uppercase">{item.label}</label><div className="flex items-center gap-2"><input type="color" value={config[item.key]} onChange={(e) => updateConfig({ [item.key]: e.target.value })} className="w-10 h-10 rounded-lg cursor-pointer border-none bg-white p-1 shadow-sm" onClick={(e) => e.stopPropagation()} /><span className="text-[10px] font-mono text-zinc-400 uppercase">{config[item.key]}</span></div></div>
                 ))}
               </div>
             </div>
 
             <div className="space-y-6 p-4 rounded-2xl transition-all hover:bg-zinc-50">
-              <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2"><PaletteIcon size={12}/> 히어로 섹션 색상</h3>
+              <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2"><PaletteIcon size={12} /> 히어로 섹션 색상</h3>
               <p className="text-[9px] text-zinc-400">비워두면 기본 색상을 따릅니다</p>
               <div className="grid grid-cols-2 gap-4">
                 {[
-                  {label:"제목 글자",key:"titleColor",fallback:config.textColor},
-                  {label:"이름 글자",key:"nameColor",fallback:config.textColor},
-                  {label:"날짜 글자",key:"dateColor",fallback:config.textColor},
-                ].map((item)=>(
-                  <div key={item.key} className="space-y-2"><label className="text-[10px] font-bold text-zinc-400 uppercase">{item.label}</label><div className="flex items-center gap-2"><input type="color" value={config[item.key]||item.fallback} onChange={(e)=>updateConfig({[item.key]:e.target.value})} className="w-10 h-10 rounded-lg cursor-pointer border-none bg-white p-1 shadow-sm" onClick={(e)=>e.stopPropagation()} /><span className="text-[10px] font-mono text-zinc-400 uppercase">{config[item.key]||"기본"}</span>{config[item.key]&&<button onClick={(e)=>{e.stopPropagation();updateConfig({[item.key]:""});}} className="text-[9px] text-red-400 hover:text-red-600">초기화</button>}</div></div>
+                  { label: "제목 글자", key: "titleColor", fallback: config.textColor },
+                  { label: "이름 글자", key: "nameColor", fallback: config.textColor },
+                  { label: "날짜 글자", key: "dateColor", fallback: config.textColor },
+                ].map((item) => (
+                  <div key={item.key} className="space-y-2"><label className="text-[10px] font-bold text-zinc-400 uppercase">{item.label}</label><div className="flex items-center gap-2"><input type="color" value={config[item.key] || item.fallback} onChange={(e) => updateConfig({ [item.key]: e.target.value })} className="w-10 h-10 rounded-lg cursor-pointer border-none bg-white p-1 shadow-sm" onClick={(e) => e.stopPropagation()} /><span className="text-[10px] font-mono text-zinc-400 uppercase">{config[item.key] || "기본"}</span>{config[item.key] && <button onClick={(e) => { e.stopPropagation(); updateConfig({ [item.key]: "" }); }} className="text-[9px] text-red-400 hover:text-red-600">초기화</button>}</div></div>
                 ))}
               </div>
             </div>
 
             <div className="space-y-6 p-4 rounded-2xl transition-all hover:bg-zinc-50">
-              <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2"><PaletteIcon size={12}/> 본문 / 달력 색상</h3>
+              <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2"><PaletteIcon size={12} /> 본문 / 달력 색상</h3>
               <p className="text-[9px] text-zinc-400">비워두면 기본 색상을 따릅니다</p>
               <div className="grid grid-cols-2 gap-4">
                 {[
-                  {label:"초대 메시지",key:"messageColor",fallback:config.textColor},
-                  {label:"섹션 제목",key:"sectionTitleColor",fallback:config.pointColor},
-                  {label:"달력 배경",key:"calendarBgColor",fallback:config.subBgColor},
-                  {label:"달력 날짜",key:"calendarDayColor",fallback:config.textColor},
-                  {label:"달력 하이라이트",key:"calendarActiveColor",fallback:config.pointColor},
-                ].map((item)=>(
-                  <div key={item.key} className="space-y-2"><label className="text-[10px] font-bold text-zinc-400 uppercase">{item.label}</label><div className="flex items-center gap-2"><input type="color" value={config[item.key]||item.fallback} onChange={(e)=>updateConfig({[item.key]:e.target.value})} className="w-10 h-10 rounded-lg cursor-pointer border-none bg-white p-1 shadow-sm" onClick={(e)=>e.stopPropagation()} /><span className="text-[10px] font-mono text-zinc-400 uppercase">{config[item.key]||"기본"}</span>{config[item.key]&&<button onClick={(e)=>{e.stopPropagation();updateConfig({[item.key]:""});}} className="text-[9px] text-red-400 hover:text-red-600">초기화</button>}</div></div>
+                  { label: "초대 메시지", key: "messageColor", fallback: config.textColor },
+                  { label: "섹션 제목", key: "sectionTitleColor", fallback: config.pointColor },
+                  { label: "달력 배경", key: "calendarBgColor", fallback: config.subBgColor },
+                  { label: "달력 날짜", key: "calendarDayColor", fallback: config.textColor },
+                  { label: "달력 하이라이트", key: "calendarActiveColor", fallback: config.pointColor },
+                ].map((item) => (
+                  <div key={item.key} className="space-y-2"><label className="text-[10px] font-bold text-zinc-400 uppercase">{item.label}</label><div className="flex items-center gap-2"><input type="color" value={config[item.key] || item.fallback} onChange={(e) => updateConfig({ [item.key]: e.target.value })} className="w-10 h-10 rounded-lg cursor-pointer border-none bg-white p-1 shadow-sm" onClick={(e) => e.stopPropagation()} /><span className="text-[10px] font-mono text-zinc-400 uppercase">{config[item.key] || "기본"}</span>{config[item.key] && <button onClick={(e) => { e.stopPropagation(); updateConfig({ [item.key]: "" }); }} className="text-[9px] text-red-400 hover:text-red-600">초기화</button>}</div></div>
                 ))}
               </div>
             </div>
 
             <div className="space-y-6 p-4 rounded-2xl transition-all hover:bg-zinc-50">
-              <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2"><PaletteIcon size={12}/> 버튼 / 푸터 색상</h3>
+              <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2"><PaletteIcon size={12} /> 버튼 / 푸터 색상</h3>
               <p className="text-[9px] text-zinc-400">비워두면 기본 색상을 따릅니다</p>
               <div className="grid grid-cols-2 gap-4">
                 {[
-                  {label:"버튼 배경",key:"buttonColor",fallback:config.pointColor},
-                  {label:"버튼 글자",key:"buttonTextColor",fallback:"#ffffff"},
-                  {label:"푸터 글자",key:"footerColor",fallback:config.textColor},
-                ].map((item)=>(
-                  <div key={item.key} className="space-y-2"><label className="text-[10px] font-bold text-zinc-400 uppercase">{item.label}</label><div className="flex items-center gap-2"><input type="color" value={config[item.key]||item.fallback} onChange={(e)=>updateConfig({[item.key]:e.target.value})} className="w-10 h-10 rounded-lg cursor-pointer border-none bg-white p-1 shadow-sm" onClick={(e)=>e.stopPropagation()} /><span className="text-[10px] font-mono text-zinc-400 uppercase">{config[item.key]||"기본"}</span>{config[item.key]&&<button onClick={(e)=>{e.stopPropagation();updateConfig({[item.key]:""});}} className="text-[9px] text-red-400 hover:text-red-600">초기화</button>}</div></div>
+                  { label: "버튼 배경", key: "buttonColor", fallback: config.pointColor },
+                  { label: "버튼 글자", key: "buttonTextColor", fallback: "#ffffff" },
+                  { label: "푸터 글자", key: "footerColor", fallback: config.textColor },
+                ].map((item) => (
+                  <div key={item.key} className="space-y-2"><label className="text-[10px] font-bold text-zinc-400 uppercase">{item.label}</label><div className="flex items-center gap-2"><input type="color" value={config[item.key] || item.fallback} onChange={(e) => updateConfig({ [item.key]: e.target.value })} className="w-10 h-10 rounded-lg cursor-pointer border-none bg-white p-1 shadow-sm" onClick={(e) => e.stopPropagation()} /><span className="text-[10px] font-mono text-zinc-400 uppercase">{config[item.key] || "기본"}</span>{config[item.key] && <button onClick={(e) => { e.stopPropagation(); updateConfig({ [item.key]: "" }); }} className="text-[9px] text-red-400 hover:text-red-600">초기화</button>}</div></div>
                 ))}
               </div>
             </div>
           </div>
-          <div className="p-6 bg-white border-t border-zinc-100"><p className="text-[10px] text-zinc-400 mb-2">색상·폰트 등 변경 후 아래 버튼을 누르면 DB에 저장됩니다.</p><button onClick={editingId?()=>handleUpdate(editingId):handleCreate} className="w-full py-4 bg-zinc-900 text-white rounded-xl text-xs font-black tracking-widest uppercase hover:bg-black shadow-xl flex items-center justify-center gap-2"><Check size={16}/> {editingId?"변경 사항 DB 저장":"디자인 게시"}</button></div>
+          <div className="p-6 bg-white border-t border-zinc-100"><p className="text-[10px] text-zinc-400 mb-2">색상·폰트 등 변경 후 아래 버튼을 누르면 DB에 저장됩니다.</p><button onClick={editingId ? () => handleUpdate(editingId) : handleCreate} className="w-full py-4 bg-zinc-900 text-white rounded-xl text-xs font-black tracking-widest uppercase hover:bg-black shadow-xl flex items-center justify-center gap-2"><Check size={16} /> {editingId ? "변경 사항 DB 저장" : "디자인 게시"}</button></div>
         </div>
         <div className="flex-1 bg-white flex flex-col px-4 md:px-8 lg:px-12 py-8 overflow-hidden relative border-l border-zinc-100">
           <div className="absolute top-8 left-8 right-8 flex items-center justify-between">
@@ -1158,6 +1458,10 @@ ${fontCatalogText}
                     onSelectSection={(id) => { setSelectedElement(id); const el = document.getElementById(`control-${id}`); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); }}
                     activeSection={selectedElement}
                     onTextSizePick={setPickedTextKey}
+                    onMouseDown={handleMouseDown}
+                    onTouchStart={handleTouchStart}
+                    onPhotoClick={handlePhotoClick}
+                    previewPhotoContainerRef={previewPhotoContainerRef}
                     data={previewData}
                     disableMainPhotoOverlay={String(previewData?.config?.imageStyle || "standard") !== "full"}
                     forceFullImageDarken
@@ -1173,6 +1477,10 @@ ${fontCatalogText}
                   onSelectSection={(id) => { setSelectedElement(id); const el = document.getElementById(`control-${id}`); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); }}
                   activeSection={selectedElement}
                   onTextSizePick={setPickedTextKey}
+                  onMouseDown={handleMouseDown}
+                  onTouchStart={handleTouchStart}
+                  onPhotoClick={handlePhotoClick}
+                  previewPhotoContainerRef={previewPhotoContainerRef}
                   data={previewData}
                   disableMainPhotoOverlay={String(previewData?.config?.imageStyle || "standard") !== "full"}
                   forceFullImageDarken
@@ -1188,9 +1496,9 @@ ${fontCatalogText}
   return (
     <div className="h-[calc(100vh-64px)] box-border overflow-hidden px-4 pt-4 md:px-8 md:pt-8 bg-zinc-50">
       <div className="max-w-[1400px] mx-auto h-full flex flex-col gap-6 px-4">
-        <div className="flex justify-between items-center flex-wrap gap-4"><div><div className="flex items-center gap-3 mb-2"><div className="w-10 h-10 bg-zinc-900 rounded-2xl flex items-center justify-center text-white"><LayoutDashboard size={20}/></div><h1 className="text-3xl font-black text-zinc-900">청첩장 스킨 라이브러리</h1></div><p className="text-zinc-500 font-medium">서비스 전체의 디자인 테마와 스타일링을 관리합니다.</p></div>
+        <div className="flex justify-between items-center flex-wrap gap-4"><div><div className="flex items-center gap-3 mb-2"><div className="w-10 h-10 bg-zinc-900 rounded-2xl flex items-center justify-center text-white"><LayoutDashboard size={20} /></div><h1 className="text-3xl font-black text-zinc-900">청첩장 스킨 라이브러리</h1></div><p className="text-zinc-500 font-medium">서비스 전체의 디자인 테마와 스타일링을 관리합니다.</p></div>
           <div className="flex gap-2">
-            <button onClick={()=>{setIsAdding(true);resetForm();}} className="flex items-center gap-2 px-6 py-4 bg-zinc-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-black shadow-xl"><Plus size={18}/> 새 디자인 스킨 출시</button>
+            <button onClick={() => { setIsAdding(true); resetForm(); }} className="flex items-center gap-2 px-6 py-4 bg-zinc-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-black shadow-xl"><Plus size={18} /> 새 디자인 스킨 출시</button>
           </div>
         </div>
         <div className="relative max-w-[1200px] mx-auto flex-1 min-h-0 flex flex-col justify-end">
@@ -1204,7 +1512,7 @@ ${fontCatalogText}
               더 보기 <ChevronRight size={20} strokeWidth={2.5} />
             </div>
           )}
-          <div 
+          <div
             ref={skinScrollRef}
             className="overflow-x-auto overflow-y-hidden pb-2 px-4 cursor-grab active:cursor-grabbing select-none"
             style={{ scrollbarGutter: "stable both-edges" }}
@@ -1213,96 +1521,97 @@ ${fontCatalogText}
             onMouseUp={handleSkinScrollEnd}
             onMouseMove={handleSkinScrollMove}
           >
-          <div className="flex gap-6 min-w-max pr-8">
-            {skins.map((skin)=> {
-            const skinConfig = (() => {
-              try {
-                return typeof skin.config === "string" ? JSON.parse(skin.config || "{}") : (skin.config || {});
-              } catch {
-                return {};
-              }
-            })();
-            const legacyGradient = Number(skinConfig.imageGradient);
-            const resolvedSkinConfig = {
-              ...skinConfig,
-              ...(Number.isNaN(legacyGradient)
-                ? {}
-                : {
-                    standardImageGradient: skinConfig.standardImageGradient ?? legacyGradient,
-                    fullImageGradient: skinConfig.fullImageGradient ?? legacyGradient,
-                    bottomImageGradient: skinConfig.bottomImageGradient ?? legacyGradient,
-                  }),
-            };
-            const bgColor = skinConfig.bgColor || (skin.slug === "modern" ? "#f1f5f9" : skin.slug === "classic" ? "#faf6f1" : "#1a1a1a");
-            const sampleData = {
-              groomName: "김철수", brideName: "이영희",
-              weddingDate: getPreviewWeddingDateIso(30),
-              venueName: "아름다운 웨딩홀", venueAddress: "서울특별시 강남구 테헤란로 123",
-              invitationTitle: "우리\n결혼합니다",
-              invitationMessage: "약속된 시간이 다가와\n사랑의 결실을 맺으려 합니다.",
-              mainPhotoUrl: "https://images.unsplash.com/photo-1465495976277-4387d4b0b4c6?q=80&w=1200&auto=format&fit=crop",
-              dDayEnabled: true, navigationEnabled: true,
-              albumPhotos: [], bankAccounts: [],
-              mainPhotoFit: "cover",
-              mainPhotoPosition: "50% 50%",
-              config: { ...getTypoForTemplate(skin.slug), ...resolvedSkinConfig, mainPhotoZoom: skinConfig.mainPhotoZoom ?? 100, mainPhotoAspectRatio: skinConfig.mainPhotoAspectRatio ?? 1 },
-            };
-            return (
-              <div
-                key={skin.id}
-                className="group flex-shrink-0"
-                style={{ width: `${350 * skinCardScale}px`, height: `${860 * skinCardScale}px` }}
-              >
-                <div
-                  className="w-[350px] mx-auto"
-                  style={{ transform: `scale(${skinCardScale})`, transformOrigin: "top center" }}
-                >
-                  <div className="relative w-[350px] h-[700px] overflow-hidden shrink-0 mx-auto flex items-center justify-center">
-                    <MobileFrame compact backgroundColor={bgColor}>
-                      <div
-                        className="absolute inset-0 overflow-y-auto hide-scrollbar"
-                        style={{ backgroundColor: bgColor }}
-                        onWheel={(e) => e.stopPropagation()}
-                      >
-                        <InvitationView
-                          data={sampleData}
-                          template={skin.slug}
-                          isPreview={false}
-                          compactPreview
-                          enableMainPhotoLightbox={false}
-                          disableMainPhotoOverlay={String(sampleData?.config?.imageStyle || "standard") !== "full"}
-                          forceFullImageDarken
-                        />
+            <div className="flex gap-6 min-w-max pr-8">
+              {skins.map((skin) => {
+                const skinConfig = (() => {
+                  try {
+                    return typeof skin.config === "string" ? JSON.parse(skin.config || "{}") : (skin.config || {});
+                  } catch {
+                    return {};
+                  }
+                })();
+                const legacyGradient = Number(skinConfig.imageGradient);
+                const resolvedSkinConfig = {
+                  ...skinConfig,
+                  ...(Number.isNaN(legacyGradient)
+                    ? {}
+                    : {
+                      standardImageGradient: skinConfig.standardImageGradient ?? legacyGradient,
+                      fullImageGradient: skinConfig.fullImageGradient ?? legacyGradient,
+                      bottomImageGradient: skinConfig.bottomImageGradient ?? legacyGradient,
+                    }),
+                };
+                const bgColor = skinConfig.bgColor || (skin.slug === "modern" ? "#f1f5f9" : skin.slug === "classic" ? "#faf6f1" : "#1a1a1a");
+                const displayPhotoUrl = skin.displayPhotoUrl || skin.thumbnail || "https://images.unsplash.com/photo-1465495976277-4387d4b0b4c6?q=80&w=1200&auto=format&fit=crop";
+                const sampleData = {
+                  groomName: "김철수", brideName: "이영희",
+                  weddingDate: getPreviewWeddingDateIso(30),
+                  venueName: "아름다운 웨딩홀", venueAddress: "서울특별시 강남구 테헤란로 123",
+                  invitationTitle: "우리\n결혼합니다",
+                  invitationMessage: "약속된 시간이 다가와\n사랑의 결실을 맺으려 합니다.",
+                  mainPhotoUrl: displayPhotoUrl,
+                  dDayEnabled: true, navigationEnabled: true,
+                  albumPhotos: [], bankAccounts: [],
+                  mainPhotoFit: "cover",
+                  mainPhotoPosition: skinConfig.mainPhotoPosition || "50% 50%",
+                  config: { ...getTypoForTemplate(skin.slug), ...resolvedSkinConfig, mainPhotoZoom: skinConfig.mainPhotoZoom ?? 100, mainPhotoAspectRatio: skinConfig.mainPhotoAspectRatio ?? 1 },
+                };
+                return (
+                  <div
+                    key={skin.id}
+                    className="group flex-shrink-0"
+                    style={{ width: `${350 * skinCardScale}px`, height: `${860 * skinCardScale}px` }}
+                  >
+                    <div
+                      className="w-[350px] mx-auto"
+                      style={{ transform: `scale(${skinCardScale})`, transformOrigin: "top center" }}
+                    >
+                      <div className="relative w-[350px] h-[700px] overflow-hidden shrink-0 mx-auto flex items-center justify-center">
+                        <MobileFrame compact backgroundColor={bgColor}>
+                          <div
+                            className="absolute inset-0 overflow-y-auto hide-scrollbar"
+                            style={{ backgroundColor: bgColor }}
+                            onWheel={(e) => e.stopPropagation()}
+                          >
+                            <InvitationView
+                              data={sampleData}
+                              template={skin.slug}
+                              isPreview={false}
+                              compactPreview
+                              enableMainPhotoLightbox={false}
+                              disableMainPhotoOverlay={String(sampleData?.config?.imageStyle || "standard") !== "full"}
+                              forceFullImageDarken
+                            />
+                          </div>
+                        </MobileFrame>
                       </div>
-                    </MobileFrame>
-                  </div>
-                  <div className="mt-3 w-full max-w-[350px] p-2 space-y-1.5 border border-zinc-300 rounded-lg bg-zinc-50/80 shadow-sm">
-                  <div className="space-y-1">
-                    <div className="px-2.5 py-0.5 bg-zinc-200 rounded-full text-[10px] font-bold tracking-widest text-zinc-800 uppercase w-fit">/{skin.slug}</div>
-                    <div className="space-y-0.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <h3 className="text-base font-bold text-zinc-900">{skin.name}</h3>
-                        {formatCreatedDate(skin.createdAt) && (
-                          <span className="text-[10px] text-zinc-400 shrink-0">{formatCreatedDate(skin.createdAt)}</span>
-                        )}
+                      <div className="mt-3 w-full max-w-[350px] p-2 space-y-1.5 border border-zinc-300 rounded-lg bg-zinc-50/80 shadow-sm">
+                        <div className="space-y-1">
+                          <div className="px-2.5 py-0.5 bg-zinc-200 rounded-full text-[10px] font-bold tracking-widest text-zinc-800 uppercase w-fit">/{skin.slug}</div>
+                          <div className="space-y-0.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <h3 className="text-base font-bold text-zinc-900">{skin.name}</h3>
+                              {formatCreatedDate(skin.createdAt) && (
+                                <span className="text-[10px] text-zinc-400 shrink-0">{formatCreatedDate(skin.createdAt)}</span>
+                              )}
+                            </div>
+                            <p className="text-xs text-zinc-600">{skin.description || "설명 없음"}</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={(e) => { e.stopPropagation(); startEdit(skin); }} className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-zinc-900 text-white rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-zinc-800 transition-all">
+                            <Edit2 size={14} /> 편집하기
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); handleDelete(skin.id); }} className="w-12 h-12 flex items-center justify-center bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-all">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </div>
-                      <p className="text-xs text-zinc-600">{skin.description||"설명 없음"}</p>
                     </div>
                   </div>
-                    <div className="flex gap-2">
-                      <button onClick={(e)=>{e.stopPropagation();startEdit(skin);}} className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-zinc-900 text-white rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-zinc-800 transition-all">
-                        <Edit2 size={14}/> 편집하기
-                      </button>
-                      <button onClick={(e)=>{e.stopPropagation();handleDelete(skin.id);}} className="w-12 h-12 flex items-center justify-center bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-all">
-                        <Trash2 size={16}/>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-          </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>

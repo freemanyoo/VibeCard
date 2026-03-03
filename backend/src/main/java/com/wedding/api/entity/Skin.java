@@ -19,7 +19,6 @@ public class Skin {
     private String slug;
 
     private String description;
-    private String thumbnail;
 
     @Column(length = 5000)
     @Builder.Default

@@ -34,7 +34,7 @@ export const WeddingData = {
   ],
   kakaoApiKey: "",
   youtubeUrl: "https://www.youtube.com/watch?v=Sc6D8M5-5J8",
-  bgmUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+  bgmUrl: "",
   noticeTitle: "알림 사항",
   noticeContent: "화환은 정중히 사양합니다.\n마음으로만 축하해 주셔도 충분히 감사드립니다.\n주차는 예식장 지하 주차장을 이용해 주세요.",
   dDayEnabled: true,

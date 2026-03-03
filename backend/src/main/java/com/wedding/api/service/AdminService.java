@@ -108,15 +108,23 @@ public class AdminService {
         List<Skin> skins = skinRepository.findAllByOrderByCreatedAtDesc();
         boolean changed = false;
         for (Skin skin : skins) {
-            String current = skin.getConfig();
-            String normalized = normalizeSkinImageGradientsZero(current);
-            if (!Objects.equals(current, normalized)) {
-                skin.setConfig(normalized);
-                changed = true;
+            try {
+                String current = skin.getConfig();
+                String normalized = normalizeSkinImageGradientsZero(current);
+                if (!Objects.equals(current, normalized)) {
+                    skin.setConfig(normalized);
+                    changed = true;
+                }
+            } catch (Exception e) {
+                // 한 스킨 처리 실패 시 나머지는 계속 진행
             }
         }
         if (changed) {
-            skinRepository.saveAll(skins);
+            try {
+                skinRepository.saveAll(skins);
+            } catch (Exception e) {
+                // 저장 실패해도 이미 로드된 목록은 반환
+            }
         }
         return skins;
     }
@@ -135,7 +143,6 @@ public class AdminService {
                 .slug(req.getSlug())
                 .description(req.getDescription())
                 .config(sanitizeSkinConfigJson(req.getConfig()))
-                .thumbnail(req.getThumbnail())
                 .build();
         return skinRepository.save(skin);
     }
@@ -145,7 +152,6 @@ public class AdminService {
         if (req.getName() != null) skin.setName(req.getName());
         if (req.getDescription() != null) skin.setDescription(req.getDescription());
         if (req.getConfig() != null) skin.setConfig(sanitizeSkinConfigJson(req.getConfig()));
-        if (req.getThumbnail() != null) skin.setThumbnail(req.getThumbnail());
         skinRepository.save(skin);
     }
 

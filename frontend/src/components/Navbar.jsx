@@ -12,7 +12,23 @@ export default function Navbar() {
           <div className="w-8 h-8 bg-zinc-900 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
             <Heart size={16} className="text-white fill-white" />
           </div>
-          <span className="font-bold text-lg tracking-tight">VibeCard</span>
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-lg tracking-tight">VibeCard</span>
+            <span className="flex items-end gap-0.5 h-4" aria-hidden="true">
+              <span
+                className="w-0.5 rounded-full bg-zinc-900/80 animate-pulse"
+                style={{ height: "45%", animationDelay: "0ms" }}
+              />
+              <span
+                className="w-0.5 rounded-full bg-zinc-900/80 animate-pulse"
+                style={{ height: "85%", animationDelay: "180ms" }}
+              />
+              <span
+                className="w-0.5 rounded-full bg-zinc-900/80 animate-pulse"
+                style={{ height: "60%", animationDelay: "360ms" }}
+              />
+            </span>
+          </div>
         </Link>
 
         <div className="flex items-center gap-4 md:gap-8">
