@@ -5,8 +5,11 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Getter @Setter @Builder
-@NoArgsConstructor @AllArgsConstructor
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class Skin {
 
     @Id
@@ -23,6 +26,8 @@ public class Skin {
     @Column(length = 5000)
     @Builder.Default
     private String config = "{}";
+
+    private String thumbnail;
 
     @Builder.Default
     private Boolean isActive = true;

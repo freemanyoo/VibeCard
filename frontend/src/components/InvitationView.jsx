@@ -259,8 +259,9 @@ function InteractiveSection({ id, className, children, dataSection, style, isPre
 
 export default function InvitationView({ data, template, isPreview = false, compactPreview = false, onSelectSection, activeSection, onMouseDown, onTouchStart, onPhotoClick, previewPhotoContainerRef, enableMainPhotoLightbox = true, showFormsInPreview = false, onTextSizePick = null, disableMainPhotoOverlay = false, syncCoverRender = false, previewUseLivePhotoLayout = false, forceFullImageDarken = false, autoContrastHeroTextWhenNoPhotoFull = false }) {
   const PREVIEW_STD_BASE_RATIO = 303 / 440;
-  const PREVIEW_STD_BASE_W = 351; // 375 frame - 24 border
+  const PREVIEW_STD_BASE_W = 351;
   const PREVIEW_STD_BASE_H = PREVIEW_STD_BASE_W / PREVIEW_STD_BASE_RATIO;
+  const PREVIEW_FULL_CONTAINER_RATIO = 375 / 750; // Fixed 1:2 ratio for phone container in previews
   const usePreviewPhotoSizing = (isPreview || compactPreview) && !previewUseLivePhotoLayout;
   const heroSectionRef = useRef(null);
   const [previewStandardBaseWidth, setPreviewStandardBaseWidth] = useState(PREVIEW_STD_BASE_W);
@@ -272,7 +273,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
   const [isSubmittingAttendance, setIsSubmittingAttendance] = useState(false);
   const [isSubmittingGuestbook, setIsSubmittingGuestbook] = useState(false);
   const [stableViewportHeight, setStableViewportHeight] = useState(null);
-  const [mainPhotoLoaded, setMainPhotoLoaded] = useState(false);  const audioRef = useRef(null);
+  const [mainPhotoLoaded, setMainPhotoLoaded] = useState(false); const audioRef = useRef(null);
   const [shareCopied, setShareCopied] = useState(false);
   const lightboxRef = useRef(null);
   const fullImageDragRef = useRef(null);
@@ -488,8 +489,12 @@ export default function InvitationView({ data, template, isPreview = false, comp
   const isFullImage = imageStyle === "full" && photoUrl;
   const useCompactHeroTopSpacing = isPreview && !compactPreview && !previewUseLivePhotoLayout && !isFullImage;
   const [mainPhotoAspectRatio, setMainPhotoAspectRatio] = useState(Number(config.mainPhotoAspectRatio) > 0 ? Number(config.mainPhotoAspectRatio) : 1);
-  const [fullContainerRatio, setFullContainerRatio] = useState(0.5);
-  const [standardContainerRatio, setStandardContainerRatio] = useState(303 / 440);
+  useEffect(() => {
+    const nextRatio = Number(config.mainPhotoAspectRatio);
+    if (nextRatio > 0) setMainPhotoAspectRatio(nextRatio);
+  }, [config.mainPhotoAspectRatio, data.mainPhotoUrl]);
+  const [fullContainerRatio, setFullContainerRatio] = useState(PREVIEW_FULL_CONTAINER_RATIO);
+  const [standardContainerRatio, setStandardContainerRatio] = useState(PREVIEW_STD_BASE_RATIO);
   const [navPosition, setNavPosition] = useState(null);
 
   const titleColor = config.titleColor || textColor;
@@ -633,7 +638,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
       await navigator.clipboard.writeText(shareText);
       setShareCopied(true);
       setTimeout(() => setShareCopied(false), 2200);
-    } catch {}
+    } catch { }
   };
 
   const openKakaoAfterCopy = () => {
@@ -792,23 +797,23 @@ export default function InvitationView({ data, template, isPreview = false, comp
   const standardPhotoRadiusValue = `${standardPhotoRadiusPx}px`;
   const previewFullBgLayer = data.mainPhotoFit === "cover" && photoUrl
     ? {
-        backgroundImage: `url("${mainRenderUrl}")`,
-        backgroundSize: getCoverBgSize(fullContainerRatio),
-        backgroundRepeat: "no-repeat",
-        backgroundPosition: getCoverBgPosition(fullContainerRatio),
-      }
+      backgroundImage: `url("${mainRenderUrl}")`,
+      backgroundSize: getCoverBgSize(fullContainerRatio),
+      backgroundRepeat: "no-repeat",
+      backgroundPosition: getCoverBgPosition(fullContainerRatio),
+    }
     : null;
   const previewStandardBgLayer = data.mainPhotoFit === "cover" && photoUrl
     ? {
-        backgroundImage: `url("${mainRenderUrl}")`,
-        backgroundSize: syncCoverRender
-          ? getPreviewStandardBgSize()
-          : (usePreviewPhotoSizing ? getPreviewStandardBgSize() : getCoverBgSize(standardContainerRatio)),
-        backgroundRepeat: "no-repeat",
-        backgroundPosition: syncCoverRender
-          ? getPreviewStandardBgPosition()
-          : (usePreviewPhotoSizing ? getPreviewStandardBgPosition() : getCoverBgPosition(standardContainerRatio)),
-      }
+      backgroundImage: `url("${mainRenderUrl}")`,
+      backgroundSize: syncCoverRender
+        ? getPreviewStandardBgSize()
+        : (usePreviewPhotoSizing ? getPreviewStandardBgSize() : getCoverBgSize(standardContainerRatio)),
+      backgroundRepeat: "no-repeat",
+      backgroundPosition: syncCoverRender
+        ? getPreviewStandardBgPosition()
+        : (usePreviewPhotoSizing ? getPreviewStandardBgPosition() : getCoverBgPosition(standardContainerRatio)),
+    }
     : null;
   const setFullPhotoContainerRef = (node) => {
     fullImageDragRef.current = node;
@@ -975,9 +980,9 @@ export default function InvitationView({ data, template, isPreview = false, comp
       ? { height: phoneFrameHeight, minHeight: phoneFrameHeight, maxHeight: phoneFrameHeight }
       : isFullImage && stableViewportHeight != null
         ? { height: stableViewportHeight, minHeight: stableViewportHeight, maxHeight: stableViewportHeight }
-      : isFullImage
-        ? { height: "100svh", minHeight: "100vh", maxHeight: "100svh" }
-        : undefined;
+        : isFullImage
+          ? { height: "100svh", minHeight: "100vh", maxHeight: "100svh" }
+          : undefined;
   const heroSectionStyle = heroFullHeight;
 
   const sectionRadius = isModern ? "24px" : isClassic ? "40px" : "32px";
@@ -1158,17 +1163,17 @@ export default function InvitationView({ data, template, isPreview = false, comp
             className="flex justify-center"
             style={usePreviewPhotoSizing
               ? {
-                  width: "calc(100% + 3rem)",
-                  marginLeft: "-1.5rem",
-                  marginRight: "-1.5rem",
-                }
+                width: "calc(100% + 3rem)",
+                marginLeft: "-1.5rem",
+                marginRight: "-1.5rem",
+              }
               : shouldUseOuterEdgeStandardPhotoWidth
-              ? {
+                ? {
                   width: isClassic ? "calc(100% + 4rem)" : "calc(100% + 3rem)",
                   marginLeft: isClassic ? "-2rem" : "-1.5rem",
                   marginRight: isClassic ? "-2rem" : "-1.5rem",
                 }
-              : { width: "100%" }}
+                : { width: "100%" }}
           >
             <div
               ref={setStandardPhotoContainerRef}
@@ -1340,8 +1345,8 @@ export default function InvitationView({ data, template, isPreview = false, comp
                     <span data-text-pick="1" data-pick-group="family-intro" onClick={(e) => pickSize(e, "familyLineSize")} className={splitGroomParents ? "flex flex-col items-center leading-tight" : "leading-tight"} style={{ fontSize: `${s(familyLineSize)}px`, ...pickableStyle }}>
                       {splitGroomParents
                         ? (groomParentNames.length ? groomParentNames : [groomParentLineText]).map((name, idx) => (
-                            <span key={`groom-parent-${idx}`} style={{ whiteSpace: "pre-line" }}>{name}</span>
-                          ))
+                          <span key={`groom-parent-${idx}`} style={{ whiteSpace: "pre-line" }}>{name}</span>
+                        ))
                         : <span style={{ whiteSpace: "pre-line" }}>{groomParentLineText}</span>}
                     </span>
                     <span ref={groomFamilyRelationRef} data-text-pick="1" data-pick-group="family-intro" onClick={(e) => pickSize(e, "familyLineSize")} className="opacity-50 flex-shrink-0" style={{ fontSize: `${s(familyRelationSize)}px`, whiteSpace: "pre-line", ...pickableStyle }}>의 {groomRelationText}</span>
@@ -1355,8 +1360,8 @@ export default function InvitationView({ data, template, isPreview = false, comp
                     <span data-text-pick="1" data-pick-group="family-intro" onClick={(e) => pickSize(e, "familyLineSize")} className={splitBrideParents ? "flex flex-col items-center leading-tight" : "leading-tight"} style={{ fontSize: `${s(familyLineSize)}px`, ...pickableStyle }}>
                       {splitBrideParents
                         ? (brideParentNames.length ? brideParentNames : [brideParentLineText]).map((name, idx) => (
-                            <span key={`bride-parent-${idx}`} style={{ whiteSpace: "pre-line" }}>{name}</span>
-                          ))
+                          <span key={`bride-parent-${idx}`} style={{ whiteSpace: "pre-line" }}>{name}</span>
+                        ))
                         : <span style={{ whiteSpace: "pre-line" }}>{brideParentLineText}</span>}
                     </span>
                     <span ref={brideFamilyRelationRef} data-text-pick="1" data-pick-group="family-intro" onClick={(e) => pickSize(e, "familyLineSize")} className="opacity-50 flex-shrink-0" style={{ fontSize: `${s(familyRelationSize)}px`, whiteSpace: "pre-line", ...pickableStyle }}>의 {brideRelationText}</span>

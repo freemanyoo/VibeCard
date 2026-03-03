@@ -308,17 +308,8 @@ const isDarkHex = (value) => {
 
 const normalizeConfigForSave = (rawConfig = {}) => {
   const next = { ...rawConfig };
-  const imageStyle = String(next.imageStyle || "standard").toLowerCase();
-  if (imageStyle !== "full") return next;
-  const darkBg = isDarkHex(next.bgColor) || isDarkHex(next.subBgColor);
-  const heroColor = darkBg ? "#FFFFFF" : "#111111";
-  next.titleColor = heroColor;
-  next.nameColor = heroColor;
-  next.dateColor = heroColor;
-  next.saveTheDateColor = heroColor;
-  next.heroVenueColor = heroColor;
-  next.heroDdayColor = heroColor;
-  next.heroTextColorMode = "custom";
+  // Removed the forced color overriding logic for 'full' image style 
+  // to allow users to set their own custom colors without the system resetting them.
   return next;
 };
 
@@ -666,7 +657,7 @@ export default function AdminSkins() {
     return `${nx}% ${ny}%`;
   };
 
-  const fallbackImage = "https://images.unsplash.com/photo-1465495976277-4387d4b0b4c6?q=80&w=1200&auto=format&fit=crop";
+  const fallbackImage = ""; // No sample image by default for new skins
   const displayPhotoUrl = thumbnail || fallbackImage;
 
   useEffect(() => {
@@ -820,6 +811,14 @@ export default function AdminSkins() {
     // 1. Show local preview instantly
     const localUrl = URL.createObjectURL(file);
     setThumbnail(localUrl);
+
+    // 1-1. Detect aspect ratio
+    const imgMeasure = new Image();
+    imgMeasure.src = localUrl;
+    imgMeasure.onload = () => {
+      const ratio = imgMeasure.width / imgMeasure.height;
+      updateConfig({ mainPhotoAspectRatio: ratio });
+    };
 
     try {
       // 2. Background compression and upload
@@ -1058,11 +1057,7 @@ ${fontCatalogText}
       groomFather: "김아빠", groomMother: "이엄마", groomRelation: "차남", groomPhone: "010-1234-5678",
       brideFather: "이아빠", brideMother: "박엄마", brideRelation: "장녀", bridePhone: "010-9876-5432",
       dDayEnabled: true, navigationEnabled: true,
-      albumPhotos: [
-        "https://images.unsplash.com/photo-1519741497674-611481863552?w=800",
-        "https://images.unsplash.com/photo-1511285560929-80b456fea0bc?w=800",
-        "https://images.unsplash.com/photo-1465495976277-4387d4b0b4c6?w=800",
-      ],
+      albumPhotos: [],
       bankAccounts: [
         { ownerType: "신랑측", bankName: "국민은행", accountNumber: "110-123-456789", ownerName: "김철수" },
         { ownerType: "신부측", bankName: "하나은행", accountNumber: "123-456789-01234", ownerName: "이영희" },
@@ -1361,26 +1356,43 @@ ${fontCatalogText}
                 <input id="admin-photo-upload" type="file" accept="image/*" onChange={handleThumbnailUpload} className="hidden" />
                 <div
                   ref={editorPhotoContainerRef}
-                  className={`relative w-[303px] h-[440px] mx-auto bg-zinc-50 border-2 border-dashed border-zinc-200 rounded-2xl overflow-hidden cursor-grab`}
+                  className={`relative w-[303px] h-[440px] mx-auto bg-zinc-50 border-2 border-dashed border-zinc-200 rounded-2xl overflow-hidden ${thumbnail ? "cursor-grab" : "cursor-pointer"}`}
                   style={{
                     "--photo-x": parsePhotoPosition(photoPosition).x,
                     "--photo-y": parsePhotoPosition(photoPosition).y,
                   }}
-                  onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e); }}
-                  onTouchStart={(e) => { e.stopPropagation(); handleTouchStart(e); }}
+                  onClick={(e) => {
+                    if (!thumbnail) {
+                      e.stopPropagation();
+                      document.getElementById("admin-photo-upload")?.click();
+                    }
+                  }}
+                  onMouseDown={(e) => {
+                    if (thumbnail) {
+                      e.stopPropagation();
+                      handleMouseDown(e);
+                    }
+                  }}
+                  onTouchStart={(e) => {
+                    if (thumbnail) {
+                      e.stopPropagation();
+                      handleTouchStart(e);
+                    }
+                  }}
                 >
                   <div
                     className="absolute inset-0 w-full h-full pointer-events-none"
                     style={{
-                      backgroundImage: `url("${displayPhotoUrl}")`,
+                      backgroundImage: displayPhotoUrl ? `url("${displayPhotoUrl}")` : "none",
                       backgroundRepeat: "no-repeat",
                       backgroundPosition: getEditorCoverBgPosition(),
                       backgroundSize: getEditorCoverBgSize(),
                     }}
                   />
                   {!thumbnail && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 text-white gap-2 pointer-events-none">
-                      <span className="text-[10px] font-bold">기본 제공 샘플 이미지입니다.</span>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/5 text-zinc-300 gap-2 pointer-events-none group-hover:bg-black/[0.08] transition-all">
+                      <Upload size={32} />
+                      <span className="text-[10px] font-bold">사진을 업로드해 주세요 (미리보기용)</span>
                     </div>
                   )}
                 </div>

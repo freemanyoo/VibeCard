@@ -3,12 +3,14 @@ services:
     image: ${POSTGRES_IMAGE:-postgres:16-alpine}
     container_name: ${POSTGRES_CONTAINER_NAME:-vibecard-postgres}
     restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-vibecard}
       POSTGRES_USER: ${POSTGRES_USER:-vibecard}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
     volumes:
-      - ${POSTGRES_DATA_PATH:-/volume2/docker/vibecard/postgres}:/var/lib/postgresql/data
+      - ${POSTGRES_DATA_PATH:-/volume1/docker/vibecard/postgres}:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vibecard} -d ${POSTGRES_DB:-vibecard}"]
       interval: 10s
@@ -27,7 +29,7 @@ services:
       - "${MINIO_FAST_API_PORT:-9000}:9000"
       - "${MINIO_FAST_CONSOLE_PORT:-9001}:9001"
     volumes:
-      - ${MINIO_FAST_DATA_PATH:-/volume2/docker/vibecard/minio-fast}:/data
+      - ${MINIO_FAST_DATA_PATH:-/volume5/ssd_docker/vibecard/minio-fast}:/data
 
   minio-cold:
     image: ${MINIO_IMAGE:-minio/minio:latest}
@@ -59,19 +61,16 @@ services:
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:-change-me}
       JPA_DDL_AUTO: ${JPA_DDL_AUTO:-update}
       UPLOAD_DIR: ${UPLOAD_DIR:-/app/uploads}
-
       MINIO_FAST_ENDPOINT: ${MINIO_FAST_ENDPOINT:-http://minio-fast:9000}
       MINIO_FAST_PUBLIC_BASE_URL: ${MINIO_FAST_PUBLIC_BASE_URL:-https://your-domain.example/minio-fast}
       MINIO_FAST_ACCESS_KEY: ${MINIO_FAST_ACCESS_KEY:-miniofast}
       MINIO_FAST_SECRET_KEY: ${MINIO_FAST_SECRET_KEY:-change-me-fast}
       MINIO_FAST_BUCKET: ${MINIO_FAST_BUCKET:-vibecard-fast}
-
       MINIO_COLD_ENDPOINT: ${MINIO_COLD_ENDPOINT:-http://minio-cold:9000}
       MINIO_COLD_PUBLIC_BASE_URL: ${MINIO_COLD_PUBLIC_BASE_URL:-https://your-domain.example/minio-cold}
       MINIO_COLD_ACCESS_KEY: ${MINIO_COLD_ACCESS_KEY:-miniocold}
       MINIO_COLD_SECRET_KEY: ${MINIO_COLD_SECRET_KEY:-change-me-cold}
       MINIO_COLD_BUCKET: ${MINIO_COLD_BUCKET:-vibecard-cold}
-
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       NAVER_CLIENT_ID: ${NAVER_CLIENT_ID:-}
       NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET:-}

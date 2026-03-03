@@ -8,4 +8,5 @@ public class SkinRequest {
     private String slug;
     private String description;
     private String config;
+    private String thumbnail;
 }
