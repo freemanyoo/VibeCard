@@ -5,14 +5,14 @@ import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import io.minio.SetBucketPolicyArgs;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
-import java.util.EnumMap;
-import java.util.Map;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -20,6 +20,7 @@ public class ObjectStorageService {
 
     private final StorageProperties storageProperties;
     private final Map<StorageTier, MinioClient> cachedClients = new EnumMap<>(StorageTier.class);
+    private final Set<String> preparedBuckets = Collections.synchronizedSet(new HashSet<>());
 
     public boolean isEnabled() {
         return isConfigured(StorageTier.FAST) || isConfigured(StorageTier.COLD);
@@ -37,7 +38,8 @@ public class ObjectStorageService {
         return store(objectKey, new ByteArrayInputStream(bytes), bytes.length, contentType, tier);
     }
 
-    public StoredObject store(String objectKey, InputStream inputStream, long size, String contentType, StorageTier tier) {
+    public StoredObject store(String objectKey, InputStream inputStream, long size, String contentType,
+            StorageTier tier) {
         StorageProperties.MinioTarget target = getRequiredTarget(tier);
         MinioClient client = getClient(tier, target);
         ensureBucketExists(client, target.getBucket());
@@ -49,8 +51,7 @@ public class ObjectStorageService {
                             .object(normalizeObjectKey(objectKey))
                             .stream(inputStream, size, -1)
                             .contentType(contentType)
-                            .build()
-            );
+                            .build());
         } catch (Exception e) {
             throw new IllegalStateException("MinIO upload failed for tier " + tier, e);
         }
@@ -60,8 +61,7 @@ public class ObjectStorageService {
                 target.getBucket(),
                 normalizedKey,
                 buildPublicUrl(target, normalizedKey),
-                tier
-        );
+                tier);
     }
 
     private synchronized MinioClient getClient(StorageTier tier, StorageProperties.MinioTarget target) {
@@ -79,19 +79,39 @@ public class ObjectStorageService {
     }
 
     private void ensureBucketExists(MinioClient client, String bucket) {
+        if (preparedBuckets.contains(bucket)) {
+            return;
+        }
         try {
             boolean exists = client.bucketExists(
                     BucketExistsArgs.builder()
                             .bucket(bucket)
-                            .build()
-            );
+                            .build());
             if (!exists) {
                 client.makeBucket(
                         MakeBucketArgs.builder()
                                 .bucket(bucket)
-                                .build()
-                );
+                                .build());
             }
+
+            // Always ensure public read policy for the bucket
+            String policy = "{\n" +
+                    "  \"Version\": \"2012-10-17\",\n" +
+                    "  \"Statement\": [\n" +
+                    "    {\n" +
+                    "      \"Effect\": \"Allow\",\n" +
+                    "      \"Principal\": \"*\",\n" +
+                    "      \"Action\": \"s3:GetObject\",\n" +
+                    "      \"Resource\": \"arn:aws:s3:::" + bucket + "/*\"\n" +
+                    "    }\n" +
+                    "  ]\n" +
+                    "}";
+            client.setBucketPolicy(
+                    SetBucketPolicyArgs.builder()
+                            .bucket(bucket)
+                            .config(policy)
+                            .build());
+            preparedBuckets.add(bucket);
         } catch (Exception e) {
             throw new IllegalStateException("Failed to prepare MinIO bucket: " + bucket, e);
         }

@@ -172,7 +172,6 @@ const DEFAULT_INVITATION_TITLE = "우리\n결혼합니다";
 const DEFAULT_INVITATION_MESSAGE = "약속된 시간이 다가와 사랑의 결실을 맺으려 합니다.\n오직 사랑 하나로 맺어지는 저희의 축복된 시작을 함께해 주십시오.";
 const AI_INVITATION_MODEL_OPTIONS = [
   { value: "openclaw1", label: "OpenAI" },
-  { value: "openclaw2", label: "Gemini" },
   { value: "openclaw3", label: "Local LLM" },
 ];
 const normalizeAlbumPhotos = (photos) =>
@@ -186,6 +185,10 @@ export default function Builder() {
   const EDITOR_BASE_H = 440;
   const EDITOR_BASE_RATIO = EDITOR_BASE_W / EDITOR_BASE_H;
   const { user } = useAuth();
+  const isAdminUser = user?.role === "ADMIN";
+  const aiModelOptions = isAdminUser
+    ? AI_INVITATION_MODEL_OPTIONS
+    : AI_INVITATION_MODEL_OPTIONS.filter((option) => option.value === "openclaw1");
   const emailPrefixToSlug = (email) => {
     const prefix = String(email || "").split("@")[0] || "";
     const normalized = prefix
@@ -219,6 +222,17 @@ export default function Builder() {
   const [mainPhotoAnalysisUrl, setMainPhotoAnalysisUrl] = useState(null);
 
   useEffect(() => {
+    // 일반 유저는 OpenAI 고정, 관리자는 OpenAI/Local LLM 중 선택
+    if (!isAdminUser) {
+      if (aiInvitationModelAlias !== "openclaw1") setAiInvitationModelAlias("openclaw1");
+      return;
+    }
+    if (!AI_INVITATION_MODEL_OPTIONS.some((option) => option.value === aiInvitationModelAlias)) {
+      setAiInvitationModelAlias("openclaw1");
+    }
+  }, [isAdminUser, aiInvitationModelAlias]);
+
+  useEffect(() => {
     if (querySlug) {
       api.get(`/invitations/slug/${querySlug}`).then((res) => setInitialData(res.data.invitation)).catch(() => setInitialData(null)).finally(() => setLoadingData(false));
     }
@@ -226,7 +240,7 @@ export default function Builder() {
 
   const [formData, setFormData] = useState({
     groom: "", bride: "", slug: "my-wedding", photoUrl: null,
-    weddingDate: new Date(new Date(Date.now() + 100*24*60*60*1000).setHours(12,0,0,0)).toISOString().slice(0,16),
+    weddingDate: new Date(new Date(Date.now() + 100 * 24 * 60 * 60 * 1000).setHours(12, 0, 0, 0)).toISOString().slice(0, 16),
     venueName: "", venueAddress: "", invitationTitle: DEFAULT_INVITATION_TITLE,
     invitationMessage: DEFAULT_INVITATION_MESSAGE,
     groomFather: "", groomMother: "", groomRelation: "장남", groomPhone: "",
@@ -269,7 +283,7 @@ export default function Builder() {
       setFormData({
         groom: initialData.groomName ?? "", bride: initialData.brideName ?? "",
         slug: initialData.slug ?? "my-wedding", photoUrl: initialData.mainPhotoUrl ?? null,
-        weddingDate: initialData.weddingDate ? new Date(initialData.weddingDate).toISOString().slice(0,16) : formData.weddingDate,
+        weddingDate: initialData.weddingDate ? new Date(initialData.weddingDate).toISOString().slice(0, 16) : formData.weddingDate,
         venueName: initialData.venueName ?? "", venueAddress: initialData.venueAddress ?? "",
         invitationTitle: initialData.invitationTitle ?? DEFAULT_INVITATION_TITLE,
         invitationMessage: resolvedInvitationMessage,
@@ -304,7 +318,7 @@ export default function Builder() {
           dateSize: p.dateSize ?? t.dateSize,
           contentSize: p.contentSize ?? t.contentSize,
         }));
-      } catch {}
+      } catch { }
     }
   }, [initialData]);
 
@@ -484,7 +498,7 @@ export default function Builder() {
       }
       setTemplate(skin.slug);
       setSelectedSkinId(skin.id);
-    } catch {}
+    } catch { }
   }
   const [isSaving, setIsSaving] = useState(false);
   const [viewMode, setViewMode] = useState("mobile");
@@ -498,6 +512,40 @@ export default function Builder() {
   const previewPhotoContainerRef = useRef(null);
   const editorPhotoContainerRef = useRef(null);
   const prevImageStyleRef = useRef(String(config.imageStyle || "standard"));
+  const compressImage = async (file, maxWidth = 1800, maxHeight = 1800, quality = 0.82) => {
+    if (!file.type.startsWith("image/")) return file;
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (e) => {
+        const img = new Image();
+        img.src = e.target.result;
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          let { width, height } = img;
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+          } else if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob((blob) => {
+            if (!blob) return resolve(file);
+            resolve(new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", { type: "image/jpeg" }));
+          }, "image/jpeg", quality);
+        };
+        img.onerror = () => resolve(file);
+      };
+      reader.onerror = () => resolve(file);
+    });
+  };
 
   const parsePhotoPosition = (pos) => {
     const [rawX = "50%", rawY = "50%"] = String(pos || "50% 50%").trim().split(/\s+/);
@@ -735,10 +783,22 @@ export default function Builder() {
 
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
-    const data = new FormData(); data.append("file", file);
+
+    // 1. Show local preview instantly
+    const localUrl = URL.createObjectURL(file);
+    updateFormData({ photoUrl: localUrl });
+    if (!aiInvitationPhotoDirty) {
+      setAiInvitationPhotoUrl(localUrl);
+    }
+
     try {
+      // 2. Background compression and upload
+      const compressed = await compressImage(file);
+      const data = new FormData(); data.append("file", compressed);
       const res = await api.post("/invitations/upload", data, { headers: { "Content-Type": "multipart/form-data" } });
+
       if (res.data.success && res.data.url) {
+        // 3. Swap local preview with server URL
         updateFormData({ photoUrl: res.data.url });
         setMainPhotoMediaFileId(res.data.mediaFileId || null);
         setMainPhotoAnalysisUrl(res.data.analysisImageUrl || res.data.url);
@@ -765,14 +825,20 @@ export default function Builder() {
   };
   const handleAiInvitationPhotoUpload = async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
-    const data = new FormData(); data.append("file", file);
+
+    // Show local preview instantly
+    const localUrl = URL.createObjectURL(file);
+    setAiInvitationPhotoUrl(localUrl);
+    setAiInvitationPhotoDirty(true);
+
     try {
+      const compressed = await compressImage(file);
+      const data = new FormData(); data.append("file", compressed);
       const res = await api.post("/invitations/upload", data, { headers: { "Content-Type": "multipart/form-data" } });
       if (res.data.success && res.data.url) {
         setAiInvitationPhotoUrl(res.data.url);
         setAiInvitationAnalysisImageUrl(res.data.analysisImageUrl || res.data.url);
         setAiInvitationSourceImageId(res.data.mediaFileId || null);
-        setAiInvitationPhotoDirty(true);
       }
       else alert("업로드 실패");
     } catch {
@@ -790,8 +856,9 @@ export default function Builder() {
     } catch {
       aiPhotoInput = aiInvitationAnalysisImageUrl || aiInvitationPhotoUrl;
     }
+    const effectiveModelAlias = isAdminUser ? aiInvitationModelAlias : "openclaw1";
     console.log("[AI Invitation] image request", {
-      modelAlias: aiInvitationModelAlias,
+      modelAlias: effectiveModelAlias,
       imageStyle: aiInvitationImageStyle,
       aiInvitationPhotoUrl,
       aiInvitationAnalysisImageUrl,
@@ -800,7 +867,7 @@ export default function Builder() {
       analysisImageUrl: aiPhotoInput,
       sourceImageId: aiInvitationSourceImageId,
     });
-    const selectedModelLabel = AI_INVITATION_MODEL_OPTIONS.find((item) => item.value === aiInvitationModelAlias)?.label || "OpenAI";
+    const selectedModelLabel = AI_INVITATION_MODEL_OPTIONS.find((item) => item.value === effectiveModelAlias)?.label || "OpenAI";
     const historyLabel = `이미지 기반 · ${selectedModelLabel} · ${aiInvitationImageStyle === "full" ? "전체 사진" : "일반 박스"} · ${aiInvitationPhotoUrl ? "사진 업로드됨" : "기본 이미지"}`;
     setIsAiInvitationGenerating(true);
     try {
@@ -808,7 +875,7 @@ export default function Builder() {
         sourceImageId: aiInvitationSourceImageId || null,
         analysisImageUrl: aiPhotoInput,
         imageStyle: aiInvitationImageStyle,
-        modelAlias: aiInvitationModelAlias,
+        modelAlias: effectiveModelAlias,
       });
       const configPatch = res.data?.configPatch && typeof res.data.configPatch === "object" ? res.data.configPatch : {};
       setAiInvitationAnalysis(String(res.data?.analysisSummary || ""));
@@ -832,7 +899,8 @@ export default function Builder() {
       return;
     }
 
-    const selectedModelLabel = AI_INVITATION_MODEL_OPTIONS.find((item) => item.value === aiInvitationModelAlias)?.label || "OpenAI";
+    const effectiveModelAlias = isAdminUser ? aiInvitationModelAlias : "openclaw1";
+    const selectedModelLabel = AI_INVITATION_MODEL_OPTIONS.find((item) => item.value === effectiveModelAlias)?.label || "OpenAI";
     const historyLabel = `명령어 기반 · ${selectedModelLabel} · ${trimmed}`;
     setIsAiInvitationGenerating(true);
     try {
@@ -841,7 +909,7 @@ export default function Builder() {
         prompt: trimmed,
         analysisImageUrl: aiInvitationAnalysisImageUrl || aiInvitationPhotoUrl || null,
         imageStyle: aiInvitationImageStyle,
-        modelAlias: aiInvitationModelAlias,
+        modelAlias: effectiveModelAlias,
       });
       const configPatch = res.data?.configPatch && typeof res.data.configPatch === "object" ? res.data.configPatch : {};
       setAiInvitationAnalysis(String(res.data?.analysisSummary || ""));
@@ -1030,12 +1098,12 @@ export default function Builder() {
   if (loadingData) return <div className="min-h-screen flex items-center justify-center"><div className="text-zinc-400 text-sm">로딩 중...</div></div>;
 
   const renderMainPhotoSection = () => (
-    <div id="control-main" className={`p-6 border-b border-zinc-100 transition-all ${selectedSection==="main"?"bg-zinc-50":"bg-white"}`} onClick={()=>setSelectedSection("main")}>
+    <div id="control-main" className={`p-6 border-b border-zinc-100 transition-all ${selectedSection === "main" ? "bg-zinc-50" : "bg-white"}`} onClick={() => setSelectedSection("main")}>
       <label className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Main Photo</label>
       <div className="mt-6 space-y-4">
         {formData.photoUrl && (
           <button
-            onClick={(e)=>{e.stopPropagation();document.getElementById("main-photo-upload")?.click();}}
+            onClick={(e) => { e.stopPropagation(); document.getElementById("main-photo-upload")?.click(); }}
             className="w-full py-2.5 rounded-xl bg-zinc-900 text-white text-xs font-bold tracking-wide"
           >
             메인 사진 업로드
@@ -1072,7 +1140,7 @@ export default function Builder() {
                 backgroundSize: getEditorCoverBgSize(),
               }}
             />
-          ) : <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-400 gap-2"><Upload size={24}/><span className="text-[10px] font-bold">사진을 업로드해 주세요</span></div>}
+          ) : <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-400 gap-2"><Upload size={24} /><span className="text-[10px] font-bold">사진을 업로드해 주세요</span></div>}
         </div>
         <div className="space-y-2">
           <p className="text-[10px] text-zinc-400 mt-2">사진을 드래그하면 위치를 조절할 수 있습니다.</p>
@@ -1096,60 +1164,60 @@ export default function Builder() {
               const forceReadable = true;
               const bulkUiColor = getUiVisibleColor(heroBulkColor, forceReadable);
               return (
-            <div
-              className="space-y-2 px-2.5 py-2 border border-zinc-200 rounded-lg"
-              style={{ backgroundColor: hexToRgba(bulkUiColor, 0.08), borderColor: hexToRgba(bulkUiColor, 0.28) }}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[10px] font-bold text-zinc-600 leading-none">선택 변경</span>
-                <span className="text-[10px] text-zinc-500">{heroSelectedColorKeys.length}개 선택됨</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={heroBulkColor}
-                  onChange={(e) => setHeroBulkColor(e.target.value)}
-                  onClick={(e) => e.stopPropagation()}
-                  className="w-8 h-8 rounded border-0 p-0 bg-transparent cursor-pointer"
-                />
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    applySelectedHeroColor();
-                  }}
-                  disabled={heroSelectedColorKeys.length === 0}
-                  className="flex-1 py-1.5 rounded-lg bg-zinc-900 text-white text-[10px] font-bold disabled:opacity-40"
+                <div
+                  className="space-y-2 px-2.5 py-2 border border-zinc-200 rounded-lg"
+                  style={{ backgroundColor: hexToRgba(bulkUiColor, 0.08), borderColor: hexToRgba(bulkUiColor, 0.28) }}
                 >
-                  선택 항목에 적용
-                </button>
-              </div>
-              <div className="pt-1 space-y-1.5">
-                <div className="flex items-center justify-between text-[10px] text-zinc-500">
-                  <span>가독성</span>
-                  <span>{clampReadabilityValue(heroBulkReadability)}%</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-bold text-zinc-600 leading-none">선택 변경</span>
+                    <span className="text-[10px] text-zinc-500">{heroSelectedColorKeys.length}개 선택됨</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={heroBulkColor}
+                      onChange={(e) => setHeroBulkColor(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-8 h-8 rounded border-0 p-0 bg-transparent cursor-pointer"
+                    />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        applySelectedHeroColor();
+                      }}
+                      disabled={heroSelectedColorKeys.length === 0}
+                      className="flex-1 py-1.5 rounded-lg bg-zinc-900 text-white text-[10px] font-bold disabled:opacity-40"
+                    >
+                      선택 항목에 적용
+                    </button>
+                  </div>
+                  <div className="pt-1 space-y-1.5">
+                    <div className="flex items-center justify-between text-[10px] text-zinc-500">
+                      <span>가독성</span>
+                      <span>{clampReadabilityValue(heroBulkReadability)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={clampReadabilityValue(heroBulkReadability)}
+                      onChange={(e) => setHeroBulkReadability(clampReadabilityValue(e.target.value))}
+                      className="w-full h-1 bg-zinc-300 rounded-lg appearance-none cursor-pointer accent-zinc-900"
+                    />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        applySelectedHeroReadability();
+                      }}
+                      disabled={heroSelectedColorKeys.length === 0}
+                      className="w-full py-1.5 rounded-lg border border-zinc-300 bg-white text-zinc-700 text-[10px] font-bold disabled:opacity-40"
+                    >
+                      선택 항목 가독성 적용
+                    </button>
+                  </div>
                 </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={clampReadabilityValue(heroBulkReadability)}
-                  onChange={(e) => setHeroBulkReadability(clampReadabilityValue(e.target.value))}
-                  className="w-full h-1 bg-zinc-300 rounded-lg appearance-none cursor-pointer accent-zinc-900"
-                />
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    applySelectedHeroReadability();
-                  }}
-                  disabled={heroSelectedColorKeys.length === 0}
-                  className="w-full py-1.5 rounded-lg border border-zinc-300 bg-white text-zinc-700 text-[10px] font-bold disabled:opacity-40"
-                >
-                  선택 항목 가독성 적용
-                </button>
-              </div>
-            </div>
               );
             })()}
             <div className="grid grid-cols-2 gap-2">
@@ -1159,33 +1227,34 @@ export default function Builder() {
                 const itemUiColor = getUiVisibleColor(itemColor, forceReadable);
                 const isSelected = heroSelectedColorKeys.includes(item.key);
                 return (
-                <label
-                  key={item.key}
-                  className="flex items-center justify-between gap-2 px-2.5 py-2 border rounded-lg"
-                  style={{
-                    backgroundColor: hexToRgba(itemUiColor, isSelected ? 0.18 : 0.08),
-                    borderColor: isSelected ? itemUiColor : hexToRgba(itemUiColor, 0.35),
-                  }}
-                >
-                  <span className="flex items-center gap-1.5 min-w-0">
+                  <label
+                    key={item.key}
+                    className="flex items-center justify-between gap-2 px-2.5 py-2 border rounded-lg"
+                    style={{
+                      backgroundColor: hexToRgba(itemUiColor, isSelected ? 0.18 : 0.08),
+                      borderColor: isSelected ? itemUiColor : hexToRgba(itemUiColor, 0.35),
+                    }}
+                  >
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleHeroColorKey(item.key)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-3.5 h-3.5 accent-zinc-900"
+                      />
+                      <span className="text-[10px] font-bold text-zinc-600 leading-none truncate">{item.label}</span>
+                    </span>
                     <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggleHeroColorKey(item.key)}
+                      type="color"
+                      value={itemColor}
+                      onChange={(e) => scheduleColorConfigUpdate({ [item.key]: e.target.value })}
                       onClick={(e) => e.stopPropagation()}
-                      className="w-3.5 h-3.5 accent-zinc-900"
+                      className="w-6 h-6 rounded border-0 p-0 bg-transparent cursor-pointer"
                     />
-                    <span className="text-[10px] font-bold text-zinc-600 leading-none truncate">{item.label}</span>
-                  </span>
-                  <input
-                    type="color"
-                    value={itemColor}
-                    onChange={(e) => scheduleColorConfigUpdate({ [item.key]: e.target.value })}
-                    onClick={(e) => e.stopPropagation()}
-                    className="w-6 h-6 rounded border-0 p-0 bg-transparent cursor-pointer"
-                  />
-                </label>
-              )})}
+                  </label>
+                )
+              })}
             </div>
           </div>
         </div>
@@ -1202,7 +1271,7 @@ export default function Builder() {
         </div>
         <div className="flex-1 overflow-y-auto">
           {/* Template / Skin */}
-          <div id="control-template" className={`p-6 border-b border-zinc-100 transition-all ${selectedSection==="template"?"bg-zinc-50":"bg-white"}`} onClick={() => setSelectedSection("template")}>
+          <div id="control-template" className={`p-6 border-b border-zinc-100 transition-all ${selectedSection === "template" ? "bg-zinc-50" : "bg-white"}`} onClick={() => setSelectedSection("template")}>
             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">디자인 스킨</label>
             {skins.length > 0 ? (
               <div className="mt-4 flex items-center justify-between gap-4">
@@ -1314,15 +1383,15 @@ export default function Builder() {
               </div>
             ) : (
               <div className="mt-4 flex items-center justify-between gap-4">
-                <button onClick={(e) => { e.stopPropagation(); const l=["modern","elegant","classic"]; setTemplate(l[(l.indexOf(template)-1+l.length)%l.length]); }} className="p-2 rounded-lg hover:bg-zinc-200 text-zinc-900"><ChevronLeft size={20} /></button>
+                <button onClick={(e) => { e.stopPropagation(); const l = ["modern", "elegant", "classic"]; setTemplate(l[(l.indexOf(template) - 1 + l.length) % l.length]); }} className="p-2 rounded-lg hover:bg-zinc-200 text-zinc-900"><ChevronLeft size={20} /></button>
                 <div className="text-center flex-1"><span className="block text-sm font-bold capitalize text-zinc-900">{template}</span><span className="text-[10px] text-zinc-400">테마</span></div>
-                <button onClick={(e) => { e.stopPropagation(); const l=["modern","elegant","classic"]; setTemplate(l[(l.indexOf(template)+1)%l.length]); }} className="p-2 rounded-lg hover:bg-zinc-200 text-zinc-900"><ChevronRight size={20} /></button>
+                <button onClick={(e) => { e.stopPropagation(); const l = ["modern", "elegant", "classic"]; setTemplate(l[(l.indexOf(template) + 1) % l.length]); }} className="p-2 rounded-lg hover:bg-zinc-200 text-zinc-900"><ChevronRight size={20} /></button>
               </div>
             )}
           </div>
           {renderMainPhotoSection()}
           {/* Typography */}
-          <div id="control-typography" className={`p-6 border-b border-zinc-100 transition-all ${selectedSection==="typography"?"bg-zinc-50":"bg-white"}`} onClick={() => setSelectedSection("typography")}>
+          <div id="control-typography" className={`p-6 border-b border-zinc-100 transition-all ${selectedSection === "typography" ? "bg-zinc-50" : "bg-white"}`} onClick={() => setSelectedSection("typography")}>
             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Typography & Hero Text</label>
             <div className="mt-6 space-y-4">
               <p className="text-[11px] text-zinc-500">미리보기 텍스트를 클릭하면 아래에서 문구/크기를 바로 수정할 수 있습니다.</p>
@@ -1379,17 +1448,17 @@ export default function Builder() {
             </div>
           </div>
           {/* Info */}
-          <div id="control-info" className={`p-6 border-b border-zinc-100 transition-all ${selectedSection==="info"?"bg-zinc-50":"bg-white"}`} onClick={()=>setSelectedSection("info")}>
+          <div id="control-info" className={`p-6 border-b border-zinc-100 transition-all ${selectedSection === "info" ? "bg-zinc-50" : "bg-white"}`} onClick={() => setSelectedSection("info")}>
             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Wedding Info</label>
             <div className="mt-6 space-y-4">
-              <div><label className="text-[11px] font-bold text-zinc-500 mb-1.5 block">URL 주소</label><input type="text" value={formData.slug} onChange={(e)=>updateFormData({slug:e.target.value})} className="w-full p-2.5 border rounded-xl text-sm" placeholder="예: cheolsu-wedding" /></div>
-              <div><label className="text-[11px] font-bold text-zinc-500 mb-1.5 block">예식 일시</label><input type="datetime-local" value={formData.weddingDate} onChange={(e)=>updateFormData({weddingDate:e.target.value})} className="w-full p-2.5 border rounded-xl text-sm" /></div>
+              <div><label className="text-[11px] font-bold text-zinc-500 mb-1.5 block">URL 주소</label><input type="text" value={formData.slug} onChange={(e) => updateFormData({ slug: e.target.value })} className="w-full p-2.5 border rounded-xl text-sm" placeholder="예: cheolsu-wedding" /></div>
+              <div><label className="text-[11px] font-bold text-zinc-500 mb-1.5 block">예식 일시</label><input type="datetime-local" value={formData.weddingDate} onChange={(e) => updateFormData({ weddingDate: e.target.value })} className="w-full p-2.5 border rounded-xl text-sm" /></div>
               <div>
                 <label className="text-[11px] font-bold text-zinc-500 mb-1.5 block">예식장 이름</label>
                 <input
                   type="text"
                   value={venueNameInput}
-                  onChange={(e)=>setVenueNameInput(e.target.value)}
+                  onChange={(e) => setVenueNameInput(e.target.value)}
                   className="w-full p-2.5 border rounded-xl text-sm"
                   placeholder="장소명 검색어 입력"
                 />
@@ -1416,42 +1485,124 @@ export default function Builder() {
             </div>
           </div>
           {/* Album */}
-          <div id="control-album" className={`p-6 border-b border-zinc-100 transition-all ${selectedSection==="album"?"bg-zinc-50":"bg-white"}`} onClick={()=>setSelectedSection("album")}>
+          <div id="control-album" className={`p-6 border-b border-zinc-100 transition-all ${selectedSection === "album" ? "bg-zinc-50" : "bg-white"}`} onClick={() => setSelectedSection("album")}>
             <div className="flex justify-between items-center mb-6">
               <label className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Gallery (Max 9)</label>
-              <button onClick={(e)=>{e.stopPropagation();document.getElementById("bulk-upload")?.click();}} className="px-3 py-1.5 bg-zinc-900 text-white text-[10px] font-bold rounded-lg">BULK UPLOAD
-                <input id="bulk-upload" type="file" multiple accept="image/*" className="hidden" onChange={async(e)=>{
-                  const files=Array.from(e.target.files||[]).slice(0,9); if(!files.length) return;
-                  const np=normalizeAlbumPhotos(formData.albumPhotos); for(const f of files){ const emptyIdx=np.findIndex((v)=>!v); if(emptyIdx===-1)break; const d=new FormData(); d.append("file",f); try{const r=await api.post("/invitations/upload",d,{headers:{"Content-Type":"multipart/form-data"}}); if(r.data.success&&r.data.url) np[emptyIdx]=r.data.url;}catch{} }
-                  updateFormData({albumPhotos:np});
+              <button onClick={(e) => { e.stopPropagation(); document.getElementById("bulk-upload")?.click(); }} className="px-3 py-1.5 bg-zinc-900 text-white text-[10px] font-bold rounded-lg">BULK UPLOAD
+                <input id="bulk-upload" type="file" multiple accept="image/*" className="hidden" onChange={async (e) => {
+                  const files = Array.from(e.target.files || []).slice(0, 9); if (!files.length) return;
+                  const filesArray = Array.from(files);
+                  const initialAlbumPhotos = normalizeAlbumPhotos(formData.albumPhotos);
+                  const filesToUpload = [];
+                  const newAlbumPhotos = [...initialAlbumPhotos];
+
+                  // First pass: create local previews and prepare for upload
+                  let currentEmptyIdx = 0;
+                  for (let i = 0; i < filesArray.length; i++) {
+                    const file = filesArray[i];
+                    const emptyIdx = newAlbumPhotos.findIndex((v, idx) => !v && idx >= currentEmptyIdx);
+                    if (emptyIdx === -1) break; // No more empty slots
+                    const localUrl = URL.createObjectURL(file);
+                    newAlbumPhotos[emptyIdx] = localUrl;
+                    filesToUpload.push({ file, index: emptyIdx, localUrl });
+                    currentEmptyIdx = emptyIdx + 1;
+                  }
+                  updateFormData({ albumPhotos: newAlbumPhotos });
+
+                  // Second pass: upload files and replace local URLs with server URLs
+                  for (const { file, index, localUrl } of filesToUpload) {
+                    const compressed = await compressImage(file);
+                    const d = new FormData();
+                    d.append("file", compressed);
+                    try {
+                      const r = await api.post("/invitations/upload", d, { headers: { "Content-Type": "multipart/form-data" } });
+                      if (r.data.success && r.data.url) {
+                        // Get the latest state to ensure we're updating correctly
+                        updateFormData((prevFormData) => {
+                          const latestAlbumPhotos = normalizeAlbumPhotos(prevFormData.albumPhotos);
+                          // Only replace if the current item at 'index' is still the localUrl we set
+                          if (latestAlbumPhotos[index] === localUrl) {
+                            latestAlbumPhotos[index] = r.data.url;
+                            URL.revokeObjectURL(localUrl); // Clean up the blob URL
+                          }
+                          return { ...prevFormData, albumPhotos: latestAlbumPhotos };
+                        });
+                      } else {
+                        // If upload fails, revert to null or handle error
+                        updateFormData((prevFormData) => {
+                          const latestAlbumPhotos = normalizeAlbumPhotos(prevFormData.albumPhotos);
+                          if (latestAlbumPhotos[index] === localUrl) {
+                            latestAlbumPhotos[index] = null;
+                            URL.revokeObjectURL(localUrl);
+                          }
+                          return { ...prevFormData, albumPhotos: latestAlbumPhotos };
+                        });
+                      }
+                    } catch {
+                      // If upload fails, revert to null or handle error
+                      updateFormData((prevFormData) => {
+                        const latestAlbumPhotos = normalizeAlbumPhotos(prevFormData.albumPhotos);
+                        if (latestAlbumPhotos[index] === localUrl) {
+                          latestAlbumPhotos[index] = null;
+                          URL.revokeObjectURL(localUrl);
+                        }
+                        return { ...prevFormData, albumPhotos: latestAlbumPhotos };
+                      });
+                    }
+                  }
                 }} />
               </button>
             </div>
             <div className="mt-6 grid grid-cols-3 gap-2">
-              {Array.from({length:9}).map((_,i)=>(
+              {Array.from({ length: 9 }).map((_, i) => (
                 <div key={i} className="relative aspect-square bg-zinc-50 border border-zinc-100 rounded-xl overflow-hidden group">
-                  {formData.albumPhotos[i] ? (<><img src={toThumbnailUrl(formData.albumPhotos[i])} alt={`album-${i}`} className="absolute inset-0 w-full h-full object-cover" onError={(e)=>{ if(e.currentTarget.dataset.fallback==="1") return; e.currentTarget.dataset.fallback="1"; e.currentTarget.src=formData.albumPhotos[i]; }} /><button onClick={()=>{const n=normalizeAlbumPhotos(formData.albumPhotos);n[i]=null;updateFormData({albumPhotos:n});}} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"><X size={10}/></button></>) : (
-                    <div className="absolute inset-0 flex items-center justify-center text-zinc-300"><Upload size={16}/><input type="file" accept="image/*" onChange={async(e)=>{const f=e.target.files?.[0];if(!f)return;const d=new FormData();d.append("file",f);try{const r=await api.post("/invitations/upload",d,{headers:{"Content-Type":"multipart/form-data"}});if(r.data.success&&r.data.url){const n=normalizeAlbumPhotos(formData.albumPhotos);n[i]=r.data.url;updateFormData({albumPhotos:n});}}catch{}}} className="absolute inset-0 opacity-0 cursor-pointer" /></div>
+                  {formData.albumPhotos[i] ? (<><img src={toThumbnailUrl(formData.albumPhotos[i])} alt={`album-${i}`} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { if (e.currentTarget.dataset.fallback === "1") return; e.currentTarget.dataset.fallback = "1"; e.currentTarget.src = formData.albumPhotos[i]; }} /><button onClick={() => { const n = normalizeAlbumPhotos(formData.albumPhotos); const oldUrl = n[i]; n[i] = null; updateFormData({ albumPhotos: n }); if (oldUrl && oldUrl.startsWith('blob:')) URL.revokeObjectURL(oldUrl); }} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"><X size={10} /></button></>) : (
+                    <div className="absolute inset-0 flex items-center justify-center text-zinc-300"><Upload size={16} /><input type="file" accept="image/*" onChange={async (e) => {
+                      const f = e.target.files?.[0]; if (!f) return;
+                      const localUrl = URL.createObjectURL(f);
+                      const n = normalizeAlbumPhotos(formData.albumPhotos); n[i] = localUrl; updateFormData({ albumPhotos: n });
+                      const compressed = await compressImage(f); const d = new FormData(); d.append("file", compressed); try {
+                        const r = await api.post("/invitations/upload", d, { headers: { "Content-Type": "multipart/form-data" } }); if (r.data.success && r.data.url) { const latestN = normalizeAlbumPhotos(formData.albumPhotos); if (latestN[i] === localUrl) { latestN[i] = r.data.url; URL.revokeObjectURL(localUrl); } updateFormData({ albumPhotos: latestN }); } else { // If upload fails, revert to null
+                          updateFormData((prevFormData) => {
+                            const latestN = normalizeAlbumPhotos(prevFormData.albumPhotos);
+                            if (latestN[i] === localUrl) {
+                              latestN[i] = null;
+                              URL.revokeObjectURL(localUrl);
+                            }
+                            return { ...prevFormData, albumPhotos: latestN };
+                          });
+                        }
+                      } catch { // If upload fails, revert to null
+                        updateFormData((prevFormData) => {
+                          const latestN = normalizeAlbumPhotos(prevFormData.albumPhotos);
+                          if (latestN[i] === localUrl) {
+                            latestN[i] = null;
+                            URL.revokeObjectURL(localUrl);
+                          }
+                          return { ...prevFormData, albumPhotos: latestN };
+                        });
+                      }
+                    }} className="absolute inset-0 opacity-0 cursor-pointer" /></div>
                   )}
                 </div>
               ))}
             </div>
           </div>
           {/* Bank Accounts */}
-          <div id="control-account" className={`p-6 border-b border-zinc-100 transition-all ${selectedSection==="account"?"bg-zinc-50":"bg-white"}`} onClick={()=>setSelectedSection("account")}>
+          <div id="control-account" className={`p-6 border-b border-zinc-100 transition-all ${selectedSection === "account" ? "bg-zinc-50" : "bg-white"}`} onClick={() => setSelectedSection("account")}>
             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Bank Accounts</label>
             <div className="mt-6 space-y-4">
-              {formData.bankAccounts.map((acc,i)=>(
+              {formData.bankAccounts.map((acc, i) => (
                 <div key={i} className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 space-y-3 relative">
-                  <button onClick={()=>updateFormData({bankAccounts:formData.bankAccounts.filter((_,idx)=>idx!==i)})} className="absolute top-3 right-3 text-zinc-300 hover:text-red-500"><X size={14}/></button>
-                  <input type="text" value={acc.ownerType} onChange={(e)=>{const n=[...formData.bankAccounts];n[i]={...n[i],ownerType:e.target.value};updateFormData({bankAccounts:n});}} className="bg-transparent text-[10px] font-black uppercase tracking-widest text-zinc-400" placeholder="신랑측 / 신부측" />
-                  <div className="grid grid-cols-2 gap-2"><input type="text" value={acc.bankName} onChange={(e)=>{const n=[...formData.bankAccounts];n[i]={...n[i],bankName:e.target.value};updateFormData({bankAccounts:n});}} className="p-2 border rounded-lg text-xs" placeholder="은행명" /><input type="text" value={acc.ownerName} onChange={(e)=>{const n=[...formData.bankAccounts];n[i]={...n[i],ownerName:e.target.value};updateFormData({bankAccounts:n});}} className="p-2 border rounded-lg text-xs" placeholder="예금주" /></div>
-                  <input type="text" value={acc.accountNumber} onChange={(e)=>{const n=[...formData.bankAccounts];n[i]={...n[i],accountNumber:e.target.value};updateFormData({bankAccounts:n});}} className="w-full p-2 border rounded-lg text-xs" placeholder="계좌번호" />
+                  <button onClick={() => updateFormData({ bankAccounts: formData.bankAccounts.filter((_, idx) => idx !== i) })} className="absolute top-3 right-3 text-zinc-300 hover:text-red-500"><X size={14} /></button>
+                  <input type="text" value={acc.ownerType} onChange={(e) => { const n = [...formData.bankAccounts]; n[i] = { ...n[i], ownerType: e.target.value }; updateFormData({ bankAccounts: n }); }} className="bg-transparent text-[10px] font-black uppercase tracking-widest text-zinc-400" placeholder="신랑측 / 신부측" />
+                  <div className="grid grid-cols-2 gap-2"><input type="text" value={acc.bankName} onChange={(e) => { const n = [...formData.bankAccounts]; n[i] = { ...n[i], bankName: e.target.value }; updateFormData({ bankAccounts: n }); }} className="p-2 border rounded-lg text-xs" placeholder="은행명" /><input type="text" value={acc.ownerName} onChange={(e) => { const n = [...formData.bankAccounts]; n[i] = { ...n[i], ownerName: e.target.value }; updateFormData({ bankAccounts: n }); }} className="p-2 border rounded-lg text-xs" placeholder="예금주" /></div>
+                  <input type="text" value={acc.accountNumber} onChange={(e) => { const n = [...formData.bankAccounts]; n[i] = { ...n[i], accountNumber: e.target.value }; updateFormData({ bankAccounts: n }); }} className="w-full p-2 border rounded-lg text-xs" placeholder="계좌번호" />
                 </div>
               ))}
               <div className="grid grid-cols-2 gap-2">
-                <button onClick={()=>updateFormData({bankAccounts:[...formData.bankAccounts,{ownerType:"신랑측",bankName:"",accountNumber:"",ownerName:""}]})} className="py-3 border-2 border-dashed border-zinc-200 rounded-2xl text-[10px] font-black text-zinc-400 uppercase">+ 신랑측</button>
-                <button onClick={()=>updateFormData({bankAccounts:[...formData.bankAccounts,{ownerType:"신부측",bankName:"",accountNumber:"",ownerName:""}]})} className="py-3 border-2 border-dashed border-zinc-200 rounded-2xl text-[10px] font-black text-zinc-400 uppercase">+ 신부측</button>
+                <button onClick={() => updateFormData({ bankAccounts: [...formData.bankAccounts, { ownerType: "신랑측", bankName: "", accountNumber: "", ownerName: "" }] })} className="py-3 border-2 border-dashed border-zinc-200 rounded-2xl text-[10px] font-black text-zinc-400 uppercase">+ 신랑측</button>
+                <button onClick={() => updateFormData({ bankAccounts: [...formData.bankAccounts, { ownerType: "신부측", bankName: "", accountNumber: "", ownerName: "" }] })} className="py-3 border-2 border-dashed border-zinc-200 rounded-2xl text-[10px] font-black text-zinc-400 uppercase">+ 신부측</button>
               </div>
             </div>
           </div>
@@ -1469,15 +1620,15 @@ export default function Builder() {
       </div>
       <div className="flex-1 flex flex-col relative overflow-hidden bg-zinc-100">
         <div className="absolute top-6 right-6 z-30 flex bg-white/80 backdrop-blur-md p-1 rounded-2xl border border-zinc-200 shadow-xl">
-          <button onClick={()=>setViewMode("mobile")} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black transition-all ${viewMode==="mobile"?"bg-zinc-900 text-white shadow-lg":"text-zinc-400 hover:text-zinc-600"}`}><Smartphone size={14}/> MOBILE</button>
-          <button onClick={()=>setViewMode("web")} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black transition-all ${viewMode==="web"?"bg-zinc-900 text-white shadow-lg":"text-zinc-400 hover:text-zinc-600"}`}><Monitor size={14}/> WEB</button>
+          <button onClick={() => setViewMode("mobile")} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black transition-all ${viewMode === "mobile" ? "bg-zinc-900 text-white shadow-lg" : "text-zinc-400 hover:text-zinc-600"}`}><Smartphone size={14} /> MOBILE</button>
+          <button onClick={() => setViewMode("web")} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black transition-all ${viewMode === "web" ? "bg-zinc-900 text-white shadow-lg" : "text-zinc-400 hover:text-zinc-600"}`}><Monitor size={14} /> WEB</button>
         </div>
         <div className="flex-1 overflow-y-auto scroll-smooth">
           <div className={`min-h-full flex flex-col items-center ${viewMode === "mobile" ? "pt-20" : ""}`}>
             {viewMode === "mobile" ? (
-              <MobileFrame backgroundColor={config.bgColor || "#ffffff"}><div className="absolute inset-0 overflow-y-auto hide-scrollbar" style={{ backgroundColor: config.bgColor || "#ffffff" }}>{formData.bgmUrl && <audio ref={audioRef} src={formData.bgmUrl} loop />}<InvitationView data={{...formData,mainPhotoUrl:formData.photoUrl,mainPhotoFit:photoFit,mainPhotoPosition:photoPosition,id:initialData?.id,config:{...config,mainPhotoZoom:photoZoom,mainPhotoAspectRatio:photoAspectRatio}}} template={template} isPreview onSelectSection={handleSectionSelect} activeSection={selectedSection} onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} onPhotoClick={handlePhotoClick} previewPhotoContainerRef={previewPhotoContainerRef} onTextSizePick={handleTextSizePick} disableMainPhotoOverlay={String(config.imageStyle || "standard") !== "full"} forceFullImageDarken /></div></MobileFrame>
+              <MobileFrame backgroundColor={config.bgColor || "#ffffff"}><div className="absolute inset-0 overflow-y-auto hide-scrollbar" style={{ backgroundColor: config.bgColor || "#ffffff" }}>{formData.bgmUrl && <audio ref={audioRef} src={formData.bgmUrl} loop />}<InvitationView data={{ ...formData, mainPhotoUrl: formData.photoUrl, mainPhotoFit: photoFit, mainPhotoPosition: photoPosition, id: initialData?.id, config: { ...config, mainPhotoZoom: photoZoom, mainPhotoAspectRatio: photoAspectRatio } }} template={template} isPreview onSelectSection={handleSectionSelect} activeSection={selectedSection} onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} onPhotoClick={handlePhotoClick} previewPhotoContainerRef={previewPhotoContainerRef} onTextSizePick={handleTextSizePick} disableMainPhotoOverlay={String(config.imageStyle || "standard") !== "full"} forceFullImageDarken /></div></MobileFrame>
             ) : (
-              <div className="w-full max-w-[800px] shadow-2xl overflow-hidden" style={{ backgroundColor: config.bgColor || "#ffffff" }}>{formData.bgmUrl && <audio ref={audioRef} src={formData.bgmUrl} loop />}<InvitationView data={{...formData,mainPhotoUrl:formData.photoUrl,mainPhotoFit:photoFit,mainPhotoPosition:photoPosition,id:initialData?.id,config:{...config,mainPhotoZoom:photoZoom,mainPhotoAspectRatio:photoAspectRatio}}} template={template} isPreview previewUseLivePhotoLayout onSelectSection={handleSectionSelect} activeSection={selectedSection} onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} onPhotoClick={handlePhotoClick} previewPhotoContainerRef={previewPhotoContainerRef} onTextSizePick={handleTextSizePick} disableMainPhotoOverlay={String(config.imageStyle || "standard") !== "full"} forceFullImageDarken /></div>
+              <div className="w-full max-w-[800px] shadow-2xl overflow-hidden" style={{ backgroundColor: config.bgColor || "#ffffff" }}>{formData.bgmUrl && <audio ref={audioRef} src={formData.bgmUrl} loop />}<InvitationView data={{ ...formData, mainPhotoUrl: formData.photoUrl, mainPhotoFit: photoFit, mainPhotoPosition: photoPosition, id: initialData?.id, config: { ...config, mainPhotoZoom: photoZoom, mainPhotoAspectRatio: photoAspectRatio } }} template={template} isPreview previewUseLivePhotoLayout onSelectSection={handleSectionSelect} activeSection={selectedSection} onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} onPhotoClick={handlePhotoClick} previewPhotoContainerRef={previewPhotoContainerRef} onTextSizePick={handleTextSizePick} disableMainPhotoOverlay={String(config.imageStyle || "standard") !== "full"} forceFullImageDarken /></div>
             )}
           </div>
         </div>
@@ -1626,20 +1777,22 @@ export default function Builder() {
                         명령어 기반
                       </button>
                     </div>
-                    <div className="space-y-2">
-                      <p className="text-xs font-bold text-zinc-600">AI 모델</p>
-                      <select
-                        value={aiInvitationModelAlias}
-                        onChange={(e) => setAiInvitationModelAlias(e.target.value)}
-                        className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-bold text-zinc-900"
-                      >
-                        {AI_INVITATION_MODEL_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    {isAdminUser && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold text-zinc-600">AI 모델</p>
+                        <select
+                          value={aiInvitationModelAlias}
+                          onChange={(e) => setAiInvitationModelAlias(e.target.value)}
+                          className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-bold text-zinc-900"
+                        >
+                          {aiModelOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <p className="text-xs font-bold text-zinc-600">레이아웃 선택</p>
                       <div className="grid grid-cols-2 gap-2">
@@ -1767,20 +1920,22 @@ export default function Builder() {
                         명령어 기반
                       </button>
                     </div>
-                    <div className="space-y-2">
-                      <p className="text-xs font-bold text-zinc-600">AI 모델</p>
-                      <select
-                        value={aiInvitationModelAlias}
-                        onChange={(e) => setAiInvitationModelAlias(e.target.value)}
-                        className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-bold text-zinc-900"
-                      >
-                        {AI_INVITATION_MODEL_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    {isAdminUser && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold text-zinc-600">AI 모델</p>
+                        <select
+                          value={aiInvitationModelAlias}
+                          onChange={(e) => setAiInvitationModelAlias(e.target.value)}
+                          className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-bold text-zinc-900"
+                        >
+                          {aiModelOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <p className="text-xs font-bold text-zinc-600">레이아웃 선택</p>
                       <div className="grid grid-cols-2 gap-2">

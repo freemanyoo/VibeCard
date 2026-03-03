@@ -55,10 +55,10 @@ cd "/Users/freemanyoo/Library/CloudStorage/SynologyDrive-develop/Wedding Invitat
 
 ### 2-2. 시놀로지로 JAR 업로드
 
-현재 빌드 결과물 이름은 `backend/build/libs/backend-0.1.0.jar` 기준입니다.
+현재 빌드 결과물 이름은 `backend/build/libs/wedding-api-0.1.0.jar` 기준입니다.
 
 ```bash
-scp -P 2222 "/Users/freemanyoo/Library/CloudStorage/SynologyDrive-develop/Wedding Invitation/WEDDING_WEB/backend/build/libs/backend-0.1.0.jar" freemanyoo@192.168.50.94:/volume1/VibeCard/backend/app.jar
+scp -P 2222 "/Users/freemanyoo/Library/CloudStorage/SynologyDrive-develop/Wedding Invitation/WEDDING_WEB/backend/build/libs/wedding-api-0.1.0.jar" freemanyoo@192.168.50.94:/volume1/VibeCard/backend/app.jar
 ```
 
 ### 2-3. 백엔드 컨테이너 재생성
@@ -83,7 +83,7 @@ cd "/Users/freemanyoo/Library/CloudStorage/SynologyDrive-develop/Wedding Invitat
 ./gradlew bootJar
 
 # 2) backend upload
-scp -P 2222 "/Users/freemanyoo/Library/CloudStorage/SynologyDrive-develop/Wedding Invitation/WEDDING_WEB/backend/build/libs/backend-0.1.0.jar" freemanyoo@192.168.50.94:/volume1/VibeCard/backend/app.jar
+scp -P 2222 "/Users/freemanyoo/Library/CloudStorage/SynologyDrive-develop/Wedding Invitation/WEDDING_WEB/backend/build/libs/wedding-api-0.1.0.jar" freemanyoo@192.168.50.94:/volume1/VibeCard/backend/app.jar
 
 # 3) backend restart
 ssh -p 2222 freemanyoo@192.168.50.94 "cd /volume1/VibeCard && /usr/local/bin/docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --force-recreate backend"

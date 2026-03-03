@@ -1,6 +1,7 @@
 spring:
   datasource:
-    url: jdbc:h2:file:./data/wedding
+    # 실행 위치와 무관하게 같은 DB 사용 (데이터 유지). 경로: ~/.wedding-dev/data/
+    url: jdbc:h2:file:${user.home}/.wedding-dev/data/wedding
     driver-class-name: org.h2.Driver
     username: sa
     password:

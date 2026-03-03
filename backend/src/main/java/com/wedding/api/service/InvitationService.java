@@ -27,6 +27,7 @@ import java.nio.file.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 @RequiredArgsConstructor
@@ -59,14 +60,16 @@ public class InvitationService {
 
     public Invitation getById(String id, String userId) {
         Invitation inv = invitationRepository.findById(id).orElse(null);
-        if (inv == null || !inv.getUser().getId().equals(userId)) return null;
+        if (inv == null || !inv.getUser().getId().equals(userId))
+            return null;
         return inv;
     }
 
     @Transactional
     public void deleteById(String id, String userId) {
         Invitation inv = invitationRepository.findById(id).orElse(null);
-        if (inv == null) throw new RuntimeException("청첩장을 찾을 수 없습니다.");
+        if (inv == null)
+            throw new RuntimeException("청첩장을 찾을 수 없습니다.");
         if (inv.getUser() == null || !userId.equals(inv.getUser().getId())) {
             throw new RuntimeException("삭제 권한이 없습니다.");
         }
@@ -78,7 +81,8 @@ public class InvitationService {
         Invitation inv;
         if (req.getId() != null && !req.getId().isEmpty()) {
             inv = invitationRepository.findById(req.getId()).orElse(null);
-            if (inv == null) throw new RuntimeException("청첩장을 찾을 수 없습니다.");
+            if (inv == null)
+                throw new RuntimeException("청첩장을 찾을 수 없습니다.");
         } else {
             inv = new Invitation();
             User user = userRepository.findById(userId).orElseThrow();
@@ -101,7 +105,8 @@ public class InvitationService {
         inv.setMainPhotoFit(req.getMainPhotoFit() != null ? req.getMainPhotoFit() : "cover");
         inv.setMainPhotoPosition(req.getMainPhotoPosition() != null ? req.getMainPhotoPosition() : "50% 50%");
         inv.setTemplate(req.getTemplate() != null ? req.getTemplate() : "modern");
-        if (req.getSkinId() != null) inv.setSkinId(req.getSkinId());
+        if (req.getSkinId() != null)
+            inv.setSkinId(req.getSkinId());
         inv.setInvitationTitle(req.getInvitationTitle());
         inv.setInvitationMessage(req.getInvitationMessage());
         inv.setGroomFather(req.getGroomFather());
@@ -147,14 +152,17 @@ public class InvitationService {
     }
 
     private String normalizeSlug(String slug) {
-        if (slug == null) return "";
+        if (slug == null)
+            return "";
         return slug.trim().toLowerCase(Locale.ROOT);
     }
 
     private void ensureUniqueSlug(String slug, String currentInvitationId) {
         Invitation existing = invitationRepository.findBySlug(slug).orElse(null);
-        if (existing == null) return;
-        if (currentInvitationId != null && currentInvitationId.equals(existing.getId())) return;
+        if (existing == null)
+            return;
+        if (currentInvitationId != null && currentInvitationId.equals(existing.getId()))
+            return;
         throw new RuntimeException("이미 사용 중인 청첩장 주소입니다. 다른 주소를 입력해 주세요.");
     }
 
@@ -179,97 +187,132 @@ public class InvitationService {
         return uploadToLocalStorage(userId, bytes, src, isImage, outputExt, fileName, contentType);
     }
 
-    private UploadResult uploadToLocalStorage(String userId, byte[] bytes, BufferedImage src, boolean isImage, String outputExt, String fileName, String contentType) throws IOException {
+    private UploadResult uploadToLocalStorage(String userId, byte[] bytes, BufferedImage src, boolean isImage,
+            String outputExt, String fileName, String contentType) throws IOException {
         Path uploadPath = Paths.get(uploadDir).toAbsolutePath();
         Files.createDirectories(uploadPath);
         Path originalPath = uploadPath.resolve(fileName);
-        StoredAsset originalAsset;
-        StoredAsset thumbnailAsset = null;
-        StoredAsset analysisAsset = null;
 
         if (!isImage) {
             Files.write(originalPath, bytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            originalAsset = new StoredAsset(null, fileName, "/uploads/" + fileName);
-            MediaFile mediaFile = saveMediaFile(userId, contentType, bytes.length, null, originalAsset, null, null, "LOCAL");
+            StoredAsset originalAsset = new StoredAsset(null, fileName, "/uploads/" + fileName);
+            MediaFile mediaFile = saveMediaFile(userId, contentType, bytes.length, null, originalAsset, null, null,
+                    "LOCAL");
             return new UploadResult(originalAsset.url(), null, null, mediaFile.getId());
         }
 
         BufferedImage optimized = scaleImage(src, ORIGINAL_MAX_EDGE);
-        writeImageByExt(optimized, originalPath, outputExt);
-        originalAsset = new StoredAsset(null, fileName, "/uploads/" + fileName);
 
-        String thumbnailUrl = createThumbnailIfImage(optimized, fileName, uploadPath);
-        if (thumbnailUrl != null) {
-            String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
-            thumbnailAsset = new StoredAsset(null, baseName + "-thumb.jpg", thumbnailUrl);
-        }
-        String analysisImageUrl = createAnalysisIfImage(optimized, fileName, uploadPath);
-        if (analysisImageUrl != null) {
-            String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
-            analysisAsset = new StoredAsset(null, baseName + "-analysis.jpg", analysisImageUrl);
-        }
-        MediaFile mediaFile = saveMediaFile(userId, contentType, bytes.length, optimized, originalAsset, thumbnailAsset, analysisAsset, "LOCAL");
-        return new UploadResult(originalAsset.url(), thumbnailUrl, analysisImageUrl, mediaFile.getId());
+        // Run scaling and saving tasks in parallel for local storage
+        CompletableFuture<StoredAsset> originalTask = CompletableFuture.supplyAsync(() -> {
+            try {
+                writeImageByExt(optimized, originalPath, outputExt);
+                return new StoredAsset(null, fileName, "/uploads/" + fileName);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        CompletableFuture<StoredAsset> thumbnailTask = CompletableFuture.supplyAsync(() -> {
+            String url = createThumbnailIfImage(optimized, fileName, uploadPath);
+            if (url != null) {
+                String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+                return new StoredAsset(null, baseName + "-thumb.jpg", url);
+            }
+            return null;
+        });
+
+        CompletableFuture<StoredAsset> analysisTask = CompletableFuture.supplyAsync(() -> {
+            String url = createAnalysisIfImage(optimized, fileName, uploadPath);
+            if (url != null) {
+                String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+                return new StoredAsset(null, baseName + "-analysis.jpg", url);
+            }
+            return null;
+        });
+
+        CompletableFuture.allOf(originalTask, thumbnailTask, analysisTask).join();
+
+        StoredAsset originalAsset = originalTask.join();
+        StoredAsset thumbnailAsset = thumbnailTask.join();
+        StoredAsset analysisAsset = analysisTask.join();
+
+        MediaFile mediaFile = saveMediaFile(userId, contentType, bytes.length, optimized, originalAsset, thumbnailAsset,
+                analysisAsset, "LOCAL");
+        return new UploadResult(originalAsset.url(), thumbnailAsset != null ? thumbnailAsset.url() : null,
+                analysisAsset != null ? analysisAsset.url() : null, mediaFile.getId());
     }
 
-    private UploadResult uploadToObjectStorage(String userId, byte[] bytes, BufferedImage src, boolean isImage, String outputExt, String fileName, String contentType) throws IOException {
+    private UploadResult uploadToObjectStorage(String userId, byte[] bytes, BufferedImage src, boolean isImage,
+            String outputExt, String fileName, String contentType) throws IOException {
         if (!isImage) {
             String objectKey = buildObjectKey("invitations/original", fileName);
             ObjectStorageService.StoredObject stored = objectStorageService.store(
                     objectKey,
                     bytes,
                     contentType,
-                    ObjectStorageService.StorageTier.COLD
-            );
+                    ObjectStorageService.StorageTier.COLD);
             StoredAsset originalAsset = toStoredAsset(stored);
-            MediaFile mediaFile = saveMediaFile(userId, contentType, bytes.length, null, originalAsset, null, null, "MINIO");
+            MediaFile mediaFile = saveMediaFile(userId, contentType, bytes.length, null, originalAsset, null, null,
+                    "MINIO");
             return new UploadResult(stored.getUrl(), null, null, mediaFile.getId());
         }
 
         BufferedImage optimized = scaleImage(src, ORIGINAL_MAX_EDGE);
         String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
 
-        ObjectStorageService.StoredObject originalStored = objectStorageService.store(
-                buildObjectKey("invitations/original", fileName),
-                encodeImageByExt(optimized, outputExt),
-                contentType,
-                ObjectStorageService.StorageTier.COLD
-        );
-        StoredAsset originalAsset = toStoredAsset(originalStored);
+        // Run scaling, encoding and MinIO storage tasks in parallel
+        CompletableFuture<StoredAsset> originalTask = CompletableFuture.supplyAsync(() -> {
+            try {
+                return toStoredAsset(objectStorageService.store(
+                        buildObjectKey("invitations/original", fileName),
+                        encodeImageByExt(optimized, outputExt),
+                        contentType,
+                        ObjectStorageService.StorageTier.COLD));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
 
-        String thumbnailUrl = null;
-        StoredAsset thumbnailAsset = null;
-        byte[] thumbBytes = createThumbnailBytes(optimized);
-        if (thumbBytes != null) {
-            ObjectStorageService.StoredObject thumbStored = objectStorageService.store(
-                    buildObjectKey("invitations/thumb", baseName + "-thumb.jpg"),
-                    thumbBytes,
-                    "image/jpeg",
-                    ObjectStorageService.StorageTier.FAST
-            );
-            thumbnailUrl = thumbStored.getUrl();
-            thumbnailAsset = toStoredAsset(thumbStored);
-        }
+        CompletableFuture<StoredAsset> thumbnailTask = CompletableFuture.supplyAsync(() -> {
+            byte[] thumbBytes = createThumbnailBytes(optimized);
+            if (thumbBytes != null) {
+                return toStoredAsset(objectStorageService.store(
+                        buildObjectKey("invitations/thumb", baseName + "-thumb.jpg"),
+                        thumbBytes,
+                        "image/jpeg",
+                        ObjectStorageService.StorageTier.FAST));
+            }
+            return null;
+        });
 
-        String analysisImageUrl = null;
-        StoredAsset analysisAsset = null;
-        byte[] analysisBytes = createAnalysisBytes(optimized);
-        if (analysisBytes != null) {
-            ObjectStorageService.StoredObject analysisStored = objectStorageService.store(
-                    buildObjectKey("invitations/analysis", baseName + "-analysis.jpg"),
-                    analysisBytes,
-                    "image/jpeg",
-                    ObjectStorageService.StorageTier.FAST
-            );
-            analysisImageUrl = analysisStored.getUrl();
-            analysisAsset = toStoredAsset(analysisStored);
-        }
+        CompletableFuture<StoredAsset> analysisTask = CompletableFuture.supplyAsync(() -> {
+            byte[] analysisBytes = createAnalysisBytes(optimized);
+            if (analysisBytes != null) {
+                return toStoredAsset(objectStorageService.store(
+                        buildObjectKey("invitations/analysis", baseName + "-analysis.jpg"),
+                        analysisBytes,
+                        "image/jpeg",
+                        ObjectStorageService.StorageTier.FAST));
+            }
+            return null;
+        });
 
-        MediaFile mediaFile = saveMediaFile(userId, contentType, bytes.length, optimized, originalAsset, thumbnailAsset, analysisAsset, "MINIO");
-        return new UploadResult(originalStored.getUrl(), thumbnailUrl, analysisImageUrl, mediaFile.getId());
+        // Wait for all three tasks to complete
+        CompletableFuture.allOf(originalTask, thumbnailTask, analysisTask).join();
+
+        StoredAsset originalAsset = originalTask.join();
+        StoredAsset thumbnailAsset = thumbnailTask.join();
+        StoredAsset analysisAsset = analysisTask.join();
+
+        MediaFile mediaFile = saveMediaFile(userId, contentType, bytes.length, optimized, originalAsset, thumbnailAsset,
+                analysisAsset, "MINIO");
+        return new UploadResult(originalAsset.url(), thumbnailAsset != null ? thumbnailAsset.url() : null,
+                analysisAsset != null ? analysisAsset.url() : null, mediaFile.getId());
     }
 
-    public record UploadResult(String url, String thumbnailUrl, String analysisImageUrl, String mediaFileId) {}
+    public record UploadResult(String url, String thumbnailUrl, String analysisImageUrl, String mediaFileId) {
+    }
 
     private String createThumbnailIfImage(BufferedImage src, String fileName, Path uploadPath) {
         byte[] thumbBytes = createThumbnailBytes(src);
@@ -315,7 +358,8 @@ public class InvitationService {
         try {
             int srcW = src.getWidth();
             int srcH = src.getHeight();
-            if (srcW <= 0 || srcH <= 0) return null;
+            if (srcW <= 0 || srcH <= 0)
+                return null;
 
             double ratio = Math.min((double) maxEdge / srcW, (double) maxEdge / srcH);
             int dstW = Math.max(1, (int) Math.round(srcW * Math.min(1.0, ratio)));
@@ -342,11 +386,12 @@ public class InvitationService {
 
     private void writeJpeg(BufferedImage image, Path outputPath) throws IOException {
         Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpg");
-        if (!writers.hasNext()) throw new IOException("JPEG writer not found");
+        if (!writers.hasNext())
+            throw new IOException("JPEG writer not found");
 
         ImageWriter writer = writers.next();
         try (OutputStream os = Files.newOutputStream(outputPath);
-             ImageOutputStream ios = ImageIO.createImageOutputStream(os)) {
+                ImageOutputStream ios = ImageIO.createImageOutputStream(os)) {
             writer.setOutput(ios);
             ImageWriteParam param = writer.getDefaultWriteParam();
             if (param.canWriteCompressed()) {
@@ -362,13 +407,15 @@ public class InvitationService {
     private BufferedImage scaleImage(BufferedImage src, int maxEdge) {
         int srcW = src.getWidth();
         int srcH = src.getHeight();
-        if (srcW <= 0 || srcH <= 0) return src;
+        if (srcW <= 0 || srcH <= 0)
+            return src;
 
         double ratio = Math.min((double) maxEdge / srcW, (double) maxEdge / srcH);
         double scale = Math.min(1.0, ratio);
         int dstW = Math.max(1, (int) Math.round(srcW * scale));
         int dstH = Math.max(1, (int) Math.round(srcH * scale));
-        if (dstW == srcW && dstH == srcH) return src;
+        if (dstW == srcW && dstH == srcH)
+            return src;
 
         int type = src.getColorModel().hasAlpha() ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB;
         BufferedImage dst = new BufferedImage(dstW, dstH, type);
@@ -389,9 +436,12 @@ public class InvitationService {
     }
 
     private String normalizeOutputExt(String ext, boolean isImage) {
-        if (!isImage) return ext == null || ext.isBlank() ? "bin" : ext;
-        if ("jpg".equals(ext) || "jpeg".equals(ext)) return "jpg";
-        if ("png".equals(ext)) return "png";
+        if (!isImage)
+            return ext == null || ext.isBlank() ? "bin" : ext;
+        if ("jpg".equals(ext) || "jpeg".equals(ext))
+            return "jpg";
+        if ("png".equals(ext))
+            return "png";
         return "jpg";
     }
 
@@ -419,11 +469,12 @@ public class InvitationService {
 
     private byte[] encodeJpeg(BufferedImage image, float quality) throws IOException {
         Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpg");
-        if (!writers.hasNext()) throw new IOException("JPEG writer not found");
+        if (!writers.hasNext())
+            throw new IOException("JPEG writer not found");
 
         ImageWriter writer = writers.next();
         try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-             ImageOutputStream ios = ImageIO.createImageOutputStream(outputStream)) {
+                ImageOutputStream ios = ImageIO.createImageOutputStream(outputStream)) {
             writer.setOutput(ios);
             ImageWriteParam param = writer.getDefaultWriteParam();
             if (param.canWriteCompressed()) {
@@ -469,8 +520,9 @@ public class InvitationService {
         return "png".equals(ext) ? "image/png" : "image/jpeg";
     }
 
-    private MediaFile saveMediaFile(String userId, String mimeType, long fileSize, BufferedImage image, StoredAsset originalAsset,
-                                    StoredAsset thumbnailAsset, StoredAsset analysisAsset, String storageMode) {
+    private MediaFile saveMediaFile(String userId, String mimeType, long fileSize, BufferedImage image,
+            StoredAsset originalAsset,
+            StoredAsset thumbnailAsset, StoredAsset analysisAsset, String storageMode) {
         MediaFile mediaFile = MediaFile.builder()
                 .userId(userId)
                 .storageMode(storageMode)
@@ -495,15 +547,17 @@ public class InvitationService {
         return new StoredAsset(storedObject.getBucket(), storedObject.getObjectKey(), storedObject.getUrl());
     }
 
-    private record StoredAsset(String bucket, String objectKey, String url) {}
+    private record StoredAsset(String bucket, String objectKey, String url) {
+    }
 
     private void writeJpeg(BufferedImage image, Path outputPath, float quality) throws IOException {
         Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpg");
-        if (!writers.hasNext()) throw new IOException("JPEG writer not found");
+        if (!writers.hasNext())
+            throw new IOException("JPEG writer not found");
 
         ImageWriter writer = writers.next();
         try (OutputStream os = Files.newOutputStream(outputPath);
-             ImageOutputStream ios = ImageIO.createImageOutputStream(os)) {
+                ImageOutputStream ios = ImageIO.createImageOutputStream(os)) {
             writer.setOutput(ios);
             ImageWriteParam param = writer.getDefaultWriteParam();
             if (param.canWriteCompressed()) {
@@ -527,12 +581,14 @@ public class InvitationService {
     }
 
     public Attendance addAttendance(String invitationId, String name, String side,
-                                     Boolean attending, Integer count, Boolean meal, Integer mealCount, String message) {
+            Boolean attending, Integer count, Boolean meal, Integer mealCount, String message) {
         Invitation inv = invitationRepository.findById(invitationId).orElseThrow();
         boolean isAttending = Boolean.TRUE.equals(attending);
         int normalizedCount = isAttending ? Math.max(1, count != null ? count : 1) : 0;
         boolean isMeal = isAttending && Boolean.TRUE.equals(meal);
-        int normalizedMealCount = isMeal ? Math.max(0, Math.min(normalizedCount, mealCount != null ? mealCount : normalizedCount)) : 0;
+        int normalizedMealCount = isMeal
+                ? Math.max(0, Math.min(normalizedCount, mealCount != null ? mealCount : normalizedCount))
+                : 0;
         Attendance att = Attendance.builder()
                 .name(name)
                 .side(side)

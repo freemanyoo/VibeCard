@@ -22,6 +22,7 @@ export function AuthProvider({ children }) {
           setUser(null);
           setToken(null);
           localStorage.removeItem("token");
+          localStorage.removeItem("refreshToken");
           localStorage.removeItem("user");
         })
         .finally(() => setLoading(false));
@@ -32,10 +33,11 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const res = await api.post("/auth/login", { email, password });
-    const { token: newToken, user: newUser } = res.data;
+    const { token: newToken, refreshToken: newRefreshToken, user: newUser } = res.data;
     setToken(newToken);
     setUser(newUser);
     localStorage.setItem("token", newToken);
+    localStorage.setItem("refreshToken", newRefreshToken);
     localStorage.setItem("user", JSON.stringify(newUser));
   };
 
@@ -49,10 +51,11 @@ export function AuthProvider({ children }) {
 
   const socialGoogleLogin = async (idToken) => {
     const res = await api.post("/auth/social/google", { idToken });
-    const { token: newToken, user: newUser } = res.data;
+    const { token: newToken, refreshToken: newRefreshToken, user: newUser } = res.data;
     setToken(newToken);
     setUser(newUser);
     localStorage.setItem("token", newToken);
+    localStorage.setItem("refreshToken", newRefreshToken);
     localStorage.setItem("user", JSON.stringify(newUser));
   };
 
@@ -80,10 +83,11 @@ export function AuthProvider({ children }) {
     }
     const redirectUri = `${window.location.origin}/auth/naver/callback`;
     const res = await api.post("/auth/social/naver", { code, state, redirectUri });
-    const { token: newToken, user: newUser } = res.data;
+    const { token: newToken, refreshToken: newRefreshToken, user: newUser } = res.data;
     setToken(newToken);
     setUser(newUser);
     localStorage.setItem("token", newToken);
+    localStorage.setItem("refreshToken", newRefreshToken);
     localStorage.setItem("user", JSON.stringify(newUser));
     sessionStorage.removeItem("naver_oauth_state");
   };
@@ -112,10 +116,11 @@ export function AuthProvider({ children }) {
     }
     const redirectUri = `${window.location.origin}/auth/kakao/callback`;
     const res = await api.post("/auth/social/kakao", { code, state, redirectUri });
-    const { token: newToken, user: newUser } = res.data;
+    const { token: newToken, refreshToken: newRefreshToken, user: newUser } = res.data;
     setToken(newToken);
     setUser(newUser);
     localStorage.setItem("token", newToken);
+    localStorage.setItem("refreshToken", newRefreshToken);
     localStorage.setItem("user", JSON.stringify(newUser));
     sessionStorage.removeItem("kakao_oauth_state");
   };
@@ -124,6 +129,7 @@ export function AuthProvider({ children }) {
     setUser(null);
     setToken(null);
     localStorage.removeItem("token");
+    localStorage.removeItem("refreshToken");
     localStorage.removeItem("user");
   };
 

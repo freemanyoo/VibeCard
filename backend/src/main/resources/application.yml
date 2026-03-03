@@ -27,7 +27,7 @@ spring:
 
 jwt:
   secret: nlQgse9klW1Ye3x6vDnPdK/c//YNTsLh6GFbl2JniBM=aSecureKeyThatIsLongEnoughForHS256
-  expiration: 604800000
+  expiration: 3600000
 
 security:
   oauth:
@@ -74,3 +74,21 @@ openai:
   base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
   api-key: ${OPENAI_API_KEY:}
   vision-model: ${OPENAI_VISION_MODEL:gpt-4.1-mini}
+
+storage:
+  minio:
+    fast:
+      endpoint: ${MINIO_FAST_ENDPOINT:}
+      public-base-url: ${MINIO_FAST_PUBLIC_BASE_URL:}
+      access-key: ${MINIO_FAST_ACCESS_KEY:}
+      secret-key: ${MINIO_FAST_SECRET_KEY:}
+      bucket: ${MINIO_FAST_BUCKET:}
+    cold:
+      endpoint: ${MINIO_COLD_ENDPOINT:}
+      public-base-url: ${MINIO_COLD_PUBLIC_BASE_URL:}
+      access-key: ${MINIO_COLD_ACCESS_KEY:}
+      secret-key: ${MINIO_COLD_SECRET_KEY:}
+      bucket: ${MINIO_COLD_BUCKET:}
+
+upload:
+  dir: ${UPLOAD_DIR:/app/uploads}

@@ -11,4 +11,5 @@ if [[ -f ".env" ]]; then
   set +a
 fi
 
+export SPRING_PROFILES_ACTIVE="${SPRING_PROFILES_ACTIVE:-dev}"
 ./gradlew bootRun

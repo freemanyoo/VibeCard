@@ -165,7 +165,6 @@ const TEXT_OVERRIDE_PLACEHOLDER = {
 
 const AI_MODEL_OPTIONS = [
   { value: "openai", label: "OpenAI", backend: "openclaw1" },
-  { value: "gemini", label: "Gemini", backend: "openclaw2" },
   { value: "local", label: "Local LLM", backend: "openclaw3" },
 ];
 
@@ -570,6 +569,40 @@ export default function AdminSkins() {
   const dragStart = useRef({ x: 0, y: 0, pos: "", lockX: false, lockY: false, fixedX: 50, fixedY: 0 });
   const pendingPosRef = useRef("");
   const hasDraggedRef = useRef(false);
+  const compressImage = async (file, maxWidth = 1800, maxHeight = 1800, quality = 0.82) => {
+    if (!file.type.startsWith("image/")) return file;
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (e) => {
+        const img = new Image();
+        img.src = e.target.result;
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          let { width, height } = img;
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+          } else if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob((blob) => {
+            if (!blob) return resolve(file);
+            resolve(new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", { type: "image/jpeg" }));
+          }, "image/jpeg", quality);
+        };
+        img.onerror = () => resolve(file);
+      };
+      reader.onerror = () => resolve(file);
+    });
+  };
 
   const photoFit = "cover";
   const photoZoom = config.mainPhotoZoom ?? 100;
@@ -783,11 +816,21 @@ export default function AdminSkins() {
 
   const handleThumbnailUpload = async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
-    const data = new FormData(); data.append("file", file);
+
+    // 1. Show local preview instantly
+    const localUrl = URL.createObjectURL(file);
+    setThumbnail(localUrl);
+
     try {
+      // 2. Background compression and upload
+      const compressed = await compressImage(file);
+      const data = new FormData(); data.append("file", compressed);
       const res = await api.post("/invitations/upload", data, { headers: { "Content-Type": "multipart/form-data" } });
+
       if (res.data.success && res.data.url) {
+        // 3. Swap with server URL
         setThumbnail(res.data.url);
+        URL.revokeObjectURL(localUrl);
       } else {
         alert("업로드 실패");
       }
@@ -1309,14 +1352,12 @@ ${fontCatalogText}
 
               <div className="pt-4 border-t border-zinc-100 space-y-4">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase">대표 사진 (미리보기/썸네일용)</label>
-                {thumbnail && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); document.getElementById("admin-photo-upload")?.click(); }}
-                    className="w-full py-2.5 rounded-xl bg-zinc-900 text-white text-xs font-bold tracking-wide"
-                  >
-                    메인 사진 교체
-                  </button>
-                )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); document.getElementById("admin-photo-upload")?.click(); }}
+                  className="w-full py-2.5 rounded-xl bg-zinc-900 text-white text-xs font-bold tracking-wide"
+                >
+                  {thumbnail ? "메인 사진 교체" : "메인 사진 업로드"}
+                </button>
                 <input id="admin-photo-upload" type="file" accept="image/*" onChange={handleThumbnailUpload} className="hidden" />
                 <div
                   ref={editorPhotoContainerRef}
