@@ -51,6 +51,12 @@ function SkinPhonePreview({ skin, cardScale = 1 }) {
   })();
   const bgColor = config.bgColor || "#ffffff";
   const builderUrl = `/builder?template=${encodeURIComponent(skin.slug)}`;
+  const previewPhotoUrl =
+    skin.displayPhotoUrl ||
+    skin.thumbnail ||
+    skin.mainPhotoUrl ||
+    skin.photoUrl ||
+    sampleInvitationData.mainPhotoUrl;
 
   return (
     <div className="relative mx-auto flex flex-col items-center">
@@ -76,30 +82,27 @@ function SkinPhonePreview({ skin, cardScale = 1 }) {
               transformOrigin: "top center",
             }}
           >
-            <div
-              className="relative shrink-0 mx-auto flex items-center justify-center"
-              style={{ width: `${HOME_PREVIEW_PHONE_WIDTH}px`, height: `${HOME_PREVIEW_PHONE_HEIGHT}px` }}
-            >
-              <MobileFrame compact compactScale={1} className="transition-transform duration-300 hover:scale-[1.01]" backgroundColor={bgColor}>
-                <div ref={scrollRef} className="absolute inset-0 overflow-y-auto hide-scrollbar bg-white">
-                  <InvitationView
-                    data={{
-                      ...sampleInvitationData,
-                      ...config, // Apply skin's specific high-level overrides if any
-                      mainPhotoUrl: skin.thumbnail || "",
-                      mainPhotoPosition: config.mainPhotoPosition || "50% 50%",
-                      mainPhotoFit: config.mainPhotoFit || "cover",
-                      config: { ...config },
-                    }}
-                    template={skin.slug}
-                    compactPreview
-                    enableMainPhotoLightbox={false}
-                    disableMainPhotoOverlay={String(config.imageStyle || "standard") !== "full"}
-                    forceFullImageDarken
-                  />
-                </div>
-              </MobileFrame>
-            </div>
+          <div
+            className="relative shrink-0 mx-auto flex items-center justify-center"
+            style={{ width: `${HOME_PREVIEW_PHONE_WIDTH}px`, height: `${HOME_PREVIEW_PHONE_HEIGHT}px` }}
+          >
+            <MobileFrame compact compactScale={1} className="hover:scale-[1.02]" backgroundColor={bgColor}>
+              <div ref={scrollRef} className="absolute inset-0 overflow-y-auto hide-scrollbar">
+                <InvitationView
+                  data={{
+                    ...sampleInvitationData,
+                    mainPhotoUrl: previewPhotoUrl,
+                    config: { ...config },
+                  }}
+                  template={skin.slug}
+                  compactPreview
+                  enableMainPhotoLightbox={false}
+                  disableMainPhotoOverlay={String(config.imageStyle || "standard") !== "full"}
+                  forceFullImageDarken
+                />
+              </div>
+            </MobileFrame>
+          </div>
           </div>
         </div>
       </div>
