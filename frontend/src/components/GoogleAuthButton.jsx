@@ -26,8 +26,15 @@ function loadGoogleScript() {
 
 export default function GoogleAuthButton({ onCredential, onError, className = "", variant = "full" }) {
   const containerRef = useRef(null);
+  const onCredentialRef = useRef(onCredential);
+  const onErrorRef = useRef(onError);
   const [ready, setReady] = useState(false);
   const clientId = useMemo(() => import.meta.env.VITE_GOOGLE_CLIENT_ID || "", []);
+
+  useEffect(() => {
+    onCredentialRef.current = onCredential;
+    onErrorRef.current = onError;
+  }, [onCredential, onError]);
 
   useEffect(() => {
     let cancelled = false;
@@ -38,20 +45,22 @@ export default function GoogleAuthButton({ onCredential, onError, className = ""
     loadGoogleScript()
       .then(() => {
         if (cancelled || !containerRef.current || !window.google?.accounts?.id) return;
+        const loginHint = localStorage.getItem("google_login_hint") || "";
         console.log("[GoogleAuth] script loaded, initializing button", { origin: window.location.origin, clientIdSet: Boolean(clientId) });
         window.google.accounts.id.initialize({
           client_id: clientId,
           callback: (response) => {
             if (!response?.credential) {
               console.error("[GoogleAuth] callback without credential", response);
-              onError?.("구글 인증 토큰을 가져오지 못했습니다.");
+              onErrorRef.current?.("구글 인증 토큰을 가져오지 못했습니다.");
               return;
             }
             console.log("[GoogleAuth] callback credential received", { length: response.credential.length });
-            onCredential?.(response.credential);
+            onCredentialRef.current?.(response.credential);
           },
           ux_mode: "popup",
-          auto_select: false,
+          auto_select: true,
+          ...(loginHint ? { login_hint: loginHint } : {}),
         });
         containerRef.current.innerHTML = "";
         const isIcon = variant === "icon";
@@ -68,12 +77,12 @@ export default function GoogleAuthButton({ onCredential, onError, className = ""
       })
       .catch(() => {
         console.error("[GoogleAuth] script load failed");
-        if (!cancelled) onError?.("구글 SDK 로딩에 실패했습니다.");
+        if (!cancelled) onErrorRef.current?.("구글 SDK 로딩에 실패했습니다.");
       });
     return () => {
       cancelled = true;
     };
-  }, [clientId, onCredential, onError, variant]);
+  }, [clientId, variant]);
 
   if (!clientId) {
     return (

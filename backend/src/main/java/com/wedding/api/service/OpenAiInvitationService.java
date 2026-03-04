@@ -38,6 +38,10 @@ import java.util.UUID;
 public class OpenAiInvitationService {
     private final ObjectMapper objectMapper;
     private final MediaFileRepository mediaFileRepository;
+    private final HttpClient httpClient = HttpClient.newBuilder()
+        .version(HttpClient.Version.HTTP_1_1)
+        .connectTimeout(Duration.ofSeconds(15))
+        .build();
 
     @Value("${openclaw.base-url:}")
     private String openClawBaseUrl;
@@ -87,7 +91,6 @@ public class OpenAiInvitationService {
     private String visionModel;
     @Value("${upload.dir:./uploads}")
     private String uploadDir;
-
     public AiInvitationImageResponse generateFromReference(String sourceImageId, String photoUrl, String imageStyle, String modelAlias) {
         String alias = normalizeModelAlias(modelAlias);
         String resolvedToken = resolveAuthToken(alias);
@@ -114,20 +117,30 @@ public class OpenAiInvitationService {
                 if (!isMethodNotAllowed(uploadError)) {
                     throw uploadError;
                 }
-                if (imageSource.mediaPath().isBlank()) {
-                    throw new IllegalStateException("현재 저장소 유형은 MediaPath fallback을 지원하지 않습니다.", uploadError);
+                if (!imageSource.mediaPath().isBlank()) {
+                    analysis = analyzeReferenceImageByMediaPath(
+                        alias,
+                        imageSource.mediaPath(),
+                        imageSource.mediaType(),
+                        normalizedStyle,
+                        resolvedToken
+                    );
+                } else if (!imageSource.sourceUrl().isBlank()) {
+                    analysis = analyzeReferenceImageByRemoteUrl(
+                        alias,
+                        imageSource.sourceUrl(),
+                        imageSource.mediaType(),
+                        normalizedStyle,
+                        resolvedToken
+                    );
+                } else {
+                    throw new IllegalStateException("현재 저장소 유형은 fallback 분석을 지원하지 않습니다.", uploadError);
                 }
-                analysis = analyzeReferenceImageByMediaPath(
-                    alias,
-                    imageSource.mediaPath(),
-                    imageSource.mediaType(),
-                    normalizedStyle,
-                    resolvedToken
-                );
             }
             return AiInvitationImageResponse.builder()
                 .success(true)
                 .analysisSummary(analysis.summary())
+                .colorStrategy(analysis.colorStrategy())
                 .congratulatoryMessage(analysis.congratulatoryMessage())
                 .configPatch(analysis.configPatch())
                 .build();
@@ -166,17 +179,27 @@ public class OpenAiInvitationService {
                     if (!isMethodNotAllowed(uploadError)) {
                         throw uploadError;
                     }
-                    if (imageSource.mediaPath().isBlank()) {
-                        throw new IllegalStateException("현재 저장소 유형은 MediaPath fallback을 지원하지 않습니다.", uploadError);
+                    if (!imageSource.mediaPath().isBlank()) {
+                        analysis = analyzeReferenceImageByMediaPath(
+                            alias,
+                            imageSource.mediaPath(),
+                            imageSource.mediaType(),
+                            normalizedStyle,
+                            resolvedToken,
+                            trimmedPrompt
+                        );
+                    } else if (!imageSource.sourceUrl().isBlank()) {
+                        analysis = analyzeReferenceImageByRemoteUrl(
+                            alias,
+                            imageSource.sourceUrl(),
+                            imageSource.mediaType(),
+                            normalizedStyle,
+                            resolvedToken,
+                            trimmedPrompt
+                        );
+                    } else {
+                        throw new IllegalStateException("현재 저장소 유형은 fallback 분석을 지원하지 않습니다.", uploadError);
                     }
-                    analysis = analyzeReferenceImageByMediaPath(
-                        alias,
-                        imageSource.mediaPath(),
-                        imageSource.mediaType(),
-                        normalizedStyle,
-                        resolvedToken,
-                        trimmedPrompt
-                    );
                 }
             } else {
                 analysis = analyzePromptOnly(alias, normalizedStyle, resolvedToken, trimmedPrompt);
@@ -185,6 +208,7 @@ public class OpenAiInvitationService {
             return AiInvitationImageResponse.builder()
                 .success(true)
                 .analysisSummary(analysis.summary())
+                .colorStrategy(analysis.colorStrategy())
                 .congratulatoryMessage(analysis.congratulatoryMessage())
                 .configPatch(analysis.configPatch())
                 .build();
@@ -299,6 +323,36 @@ public class OpenAiInvitationService {
         return parseAnalysisResponse(root);
     }
 
+    private AnalysisResult analyzeReferenceImageByRemoteUrl(String modelAlias, String mediaUrl, String mediaType, String imageStyle, String key) throws Exception {
+        return analyzeReferenceImageByRemoteUrl(modelAlias, mediaUrl, mediaType, imageStyle, key, null);
+    }
+
+    private AnalysisResult analyzeReferenceImageByRemoteUrl(String modelAlias, String mediaUrl, String mediaType, String imageStyle, String key, String extraPrompt) throws Exception {
+        if ("openclaw3".equals(normalizeModelAlias(modelAlias))) {
+            String visionContext = extractVisionContextByRemoteUrl(modelAlias, mediaUrl, mediaType, key);
+            return analyzeReferenceFromVisionContext(modelAlias, imageStyle, key, extraPrompt, visionContext);
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("SessionKey", newAnalysisSessionKey(modelAlias, "image-remote", mediaUrl));
+        payload.put("model", resolveVisionModelName(modelAlias));
+        payload.put("response_format", Map.of("type", "json_object"));
+        payload.put("MediaUrl", mediaUrl);
+        payload.put("MediaUrls", new String[] { mediaUrl });
+        payload.put("MediaType", mediaType);
+        payload.put("messages", new Object[] {
+            Map.of(
+                "role", "user",
+                "content", new Object[] {
+                    Map.of("type", "text", "text", buildAnalysisPrompt(imageStyle, extraPrompt))
+                }
+            )
+        });
+
+        JsonNode root = postJson(resolveEndpoint(modelAlias), payload, key);
+        return parseAnalysisResponse(root);
+    }
+
     private String extractVisionContextByFileId(String modelAlias, String fileId, String key) throws Exception {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("SessionKey", newAnalysisSessionKey(modelAlias, "vision-file", fileId));
@@ -335,6 +389,29 @@ public class OpenAiInvitationService {
         payload.put("MediaUrl", mediaPath);
         payload.put("MediaPaths", new String[] { mediaPath });
         payload.put("MediaUrls", new String[] { mediaPath });
+        payload.put("MediaType", mediaType);
+        payload.put("messages", new Object[] {
+            Map.of(
+                "role", "user",
+                "content", new Object[] {
+                    Map.of("type", "text", "text", buildVisionExtractionPrompt())
+                }
+            )
+        });
+        JsonNode root = postJson(resolveEndpoint(modelAlias), payload, key, Duration.ofSeconds(120));
+        String content = extractResponseText(root);
+        if (content.isBlank()) {
+            throw new IllegalStateException("비전 분석 결과가 비어 있습니다.");
+        }
+        return content;
+    }
+
+    private String extractVisionContextByRemoteUrl(String modelAlias, String mediaUrl, String mediaType, String key) throws Exception {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("SessionKey", newAnalysisSessionKey(modelAlias, "vision-remote", mediaUrl));
+        payload.put("model", resolveVisionModelName(modelAlias));
+        payload.put("MediaUrl", mediaUrl);
+        payload.put("MediaUrls", new String[] { mediaUrl });
         payload.put("MediaType", mediaType);
         payload.put("messages", new Object[] {
             Map.of(
@@ -411,11 +488,13 @@ public class OpenAiInvitationService {
 
             HttpRequest request = HttpRequest.newBuilder(URI.create(join(baseUrl, "/api/generate")))
                 .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
                 .timeout(Duration.ofSeconds(10))
+                .expectContinue(false)
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload), StandardCharsets.UTF_8))
                 .build();
 
-            HttpResponse<Void> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.discarding());
+            HttpResponse<Void> response = httpClient.send(request, HttpResponse.BodyHandlers.discarding());
             log.info("[OpenClaw3] Ollama {} unload requested: model={}, url={}, status={}", phase, ollamaModelName, baseUrl, response.statusCode());
         } catch (Exception e) {
             log.warn("[OpenClaw3] Ollama {} unload failed: model={}, url={}, error={}", phase, ollamaModelName, baseUrl, e.toString());
@@ -434,7 +513,9 @@ public class OpenAiInvitationService {
             Required keys:
             - summary: short Korean summary of the mood (max 40 chars)
             - sceneType: one of [forest, sea, garden, city, indoor, hotel, studio, sunset, night, floral, classic, modern, luxury, other]
-            - congratulatoryMessage: Korean factual scene description in 1-3 sentences (can be empty if not enough detail)
+            - analysisSummary: one short Korean paragraph in 2-3 sentences describing visible people actions first and the background setting second
+            - colorStrategy: one concise Korean paragraph in 1 short sentence, or at most 2 short sentences, that selects exactly one representative main color using an emotional Korean color name and briefly explains why it fits the photo
+            - congratulatoryMessage: warm and refined Korean wedding message in 1-2 sentences with no headings
             - bgColor: hex color
             - subBgColor: hex color
             - textColor: hex color
@@ -448,9 +529,8 @@ public class OpenAiInvitationService {
             - buttonTextColor: hex color
             Rules:
             - Keep the uploaded photo as the main image. Do not generate a replacement image.
-            - First understand the photo in detail before choosing colors.
-            - Carefully inspect: background location, venue type, indoor or outdoor, natural elements, sky or water, trees or flowers, architecture, hotel mood, studio mood, city mood, time of day, season feeling, weather feeling, brightness, contrast, and overall luxury level.
-            - Carefully inspect the couple: pose, distance between them, eye contact, smile, energy level, whether they are walking, running, standing, holding flowers, bouquet presence, dress silhouette, suit tone, veil, fabric texture, and whether the mood feels formal, romantic, lively, calm, elegant, luxurious, or natural.
+            - Focus first on the most visible background setting and the most obvious people action.
+            - Only use broad visual cues that are immediately visible: background type, indoor or outdoor, overall brightness, and one dominant color cue.
             - Detect the dominant scene first, then choose sceneType from the allowed list.
             - Scene examples:
             - forest photo -> forest-friendly palette and natural premium background tone.
@@ -466,14 +546,24 @@ public class OpenAiInvitationService {
             - If the photo feels luxurious, use more sophisticated, darker, cleaner, richer tones.
             - If the photo feels natural or bright, use softer, cleaner, airier tones.
             - Summary must reflect the actual visual mood, not a generic wedding phrase.
-            - congratulatoryMessage should NOT be a congratulation for this test.
-            - Use congratulatoryMessage as a detailed factual description of what is visually happening in the image.
-            - Describe the visible scene precisely: who is standing or walking, bouquet or flowers, pose, facial expression, dress and suit tone, venue or background, lighting direction, surrounding objects, and the overall composition.
+            - analysisSummary must focus first on the visible people action, pose, distance, and interaction, then describe the surrounding background or venue.
+            - analysisSummary should mention concrete visible details before abstract mood words.
+            - analysisSummary may mention overall light or mood only in one short supporting phrase if truly necessary.
+            - analysisSummary must not expand into long emotional interpretation, detailed texture breakdown, extended lighting theory, or decorative visual commentary.
+            - analysisSummary must be written as one natural paragraph in 2-3 compact sentences with no headings, labels, bullets, or numbered lists.
+            - Do not use the literal words "이미지 분석" or "축하문" inside analysisSummary.
+            - colorStrategy must describe exactly one representative color only, not multiple palette options.
+            - colorStrategy must not contain HEX codes, markdown, bullets, numbered lists, or section headings.
+            - colorStrategy must use an emotional Korean color name that fits the actual image.
+            - colorStrategy must cite only the single most relevant visual cue from the photo and explain briefly why that one color is the best main color using Adobe Color style harmony logic.
+            - colorStrategy must briefly explain the design direction in a compact way. Keep it clearly shorter than analysisSummary.
+            - The structured color fields (bgColor, subBgColor, textColor, pointColor, titleColor, nameColor, dateColor, messageColor, sectionTitleColor, buttonColor, buttonTextColor) must still be valid HEX colors derived from that representative color and its harmonious supporting tones.
             - If exact detail is unclear, say only what is visually plausible and avoid inventing hidden details.
             - Choose a matching invitation background and text palette that fits the uploaded photo and a Korean mobile wedding invitation hero section.
             - The result must fit a Korean mobile wedding invitation hero section.
             - Layout target: %s
             - The returned colors must feel intentionally matched to the detected scene, not generic.
+            - congratulatoryMessage must feel calm, elegant, warm, and polished, and it must be plain prose with no headings or labels.
             - Output only a raw JSON object with no markdown, no code fences, and no extra explanation.
             """.formatted(styleLabel);
         String extra = clean(extraPrompt);
@@ -493,15 +583,15 @@ public class OpenAiInvitationService {
 
     private String buildVisionExtractionPrompt() {
         return """
-            Analyze the uploaded wedding image and describe only the visible facts.
+            Analyze the uploaded wedding image and describe only the most important visible facts.
             Do not return JSON.
-            Write concise Korean prose in 4-8 sentences.
+            Write concise Korean prose in 3-4 short sentences.
             Include:
-            - background location and venue
+            - the main background setting and venue
             - indoor or outdoor
-            - lighting, time-of-day, brightness, color temperature
-            - visible people, pose, facial expression, bouquet, dress, suit, composition
-            - dominant mood and notable colors
+            - visible people, their relative position, and the single most obvious action or pose
+            - one brief note on overall brightness or the single strongest visible color cue if needed
+            Keep the description factual and specific, but do not expand into detailed lighting theory, texture analysis, or emotional interpretation.
             Do not invent hidden details. Only describe what is visually plausible from the image.
             """;
     }
@@ -515,7 +605,9 @@ public class OpenAiInvitationService {
             Required keys:
             - summary: short Korean summary of the mood (max 40 chars)
             - sceneType: one of [forest, sea, garden, city, indoor, hotel, studio, sunset, night, floral, classic, modern, luxury, other]
-            - congratulatoryMessage: Korean factual scene description in 1-3 sentences (can be empty if not enough detail)
+            - analysisSummary: one short Korean paragraph in 2-3 sentences describing visible people actions first and the background setting second
+            - colorStrategy: one concise Korean paragraph in 1 short sentence, or at most 2 short sentences, that selects exactly one representative main color using an emotional Korean color name and briefly explains why it harmonizes with the described photo
+            - congratulatoryMessage: warm and refined Korean wedding message in 1-2 sentences with no headings
             - bgColor: hex color
             - subBgColor: hex color
             - textColor: hex color
@@ -530,7 +622,20 @@ public class OpenAiInvitationService {
             Rules:
             - Treat the visual analysis below as the only photo source.
             - Keep the uploaded photo as the main image. Do not generate a replacement image.
-            - Derive the palette from the described scene, lighting, composition, and mood.
+            - Derive the palette from the described scene and the single strongest color cue.
+            - analysisSummary must focus first on the visible people action, pose, distance, and interaction, then describe the surrounding background or venue.
+            - analysisSummary should mention concrete visible details before abstract mood words.
+            - analysisSummary may mention overall light or mood only in one short supporting phrase if truly necessary.
+            - analysisSummary must not expand into long emotional interpretation, detailed texture breakdown, extended lighting theory, or decorative visual commentary.
+            - analysisSummary must be written as one natural paragraph in 2-3 compact sentences with no headings, labels, bullets, or numbered lists.
+            - Do not use the literal words "이미지 분석" or "축하문" inside analysisSummary.
+            - colorStrategy must describe exactly one representative color only, not multiple palette options.
+            - colorStrategy must not contain HEX codes, markdown, bullets, numbered lists, or section headings.
+            - colorStrategy must use an emotional Korean color name and explain the choice using the provided visual analysis as the source of truth.
+            - colorStrategy must reference only the single most relevant described element and explain briefly why that one color is the best main color using Adobe Color style harmony logic.
+            - colorStrategy must briefly explain the design direction in a compact way. Keep it clearly shorter than analysisSummary.
+            - The structured color fields (bgColor, subBgColor, textColor, pointColor, titleColor, nameColor, dateColor, messageColor, sectionTitleColor, buttonColor, buttonTextColor) must still be valid HEX colors derived from that representative color and its harmonious supporting tones.
+            - congratulatoryMessage must feel calm, elegant, warm, and polished, and it must be plain prose with no headings or labels.
             - Layout target: %s
             - Output only a raw JSON object with no markdown, no code fences, and no extra explanation.
 
@@ -585,7 +690,9 @@ public class OpenAiInvitationService {
             Required keys:
             - summary: short Korean summary of the mood (max 40 chars)
             - sceneType: one of [forest, sea, garden, city, indoor, hotel, studio, sunset, night, floral, classic, modern, luxury, other]
-            - congratulatoryMessage: Korean factual design description in 1-3 sentences (describe the intended mood and composition, not a congratulation)
+            - analysisSummary: one short Korean paragraph in 2-3 sentences describing the intended people action impression first and the background setting second
+            - colorStrategy: one concise Korean paragraph in 1 short sentence, or at most 2 short sentences, that selects exactly one representative main color using an emotional Korean color name and briefly explains why it fits the requested mood
+            - congratulatoryMessage: warm and refined Korean wedding message in 1-2 sentences with no headings
             - bgColor: hex color
             - subBgColor: hex color
             - textColor: hex color
@@ -602,7 +709,16 @@ public class OpenAiInvitationService {
             - Build a coherent Korean mobile wedding invitation palette and tone.
             - Layout target: %s
             - The palette must feel intentional, premium, and internally consistent.
-            - congratulatoryMessage should describe the intended visual style and atmosphere in Korean.
+            - analysisSummary must stay short and direct, focusing first on the intended people action impression and then on the background setting.
+            - analysisSummary may mention overall light or mood only in one short supporting phrase if necessary.
+            - analysisSummary must be written as one natural paragraph in 2-3 compact sentences with no headings, labels, bullets, or numbered lists.
+            - Do not use the literal words "이미지 분석" or "축하문" inside analysisSummary.
+            - colorStrategy must describe exactly one representative color only, not multiple palette options.
+            - colorStrategy must not contain HEX codes, markdown, bullets, numbered lists, or section headings.
+            - colorStrategy must use an emotional Korean color name and explain briefly why that one color is the most suitable main color using Adobe Color style harmony logic.
+            - colorStrategy must briefly explain the design direction in a compact way. Keep it clearly shorter than analysisSummary.
+            - The structured color fields (bgColor, subBgColor, textColor, pointColor, titleColor, nameColor, dateColor, messageColor, sectionTitleColor, buttonColor, buttonTextColor) must still be valid HEX colors derived from that representative color and its harmonious supporting tones.
+            - congratulatoryMessage should be warm, calm, elegant, and polished, and it must be plain prose with no headings or labels.
             - Output only a raw JSON object with no markdown, no code fences, and no extra explanation.
 
             User design request:
@@ -625,6 +741,8 @@ public class OpenAiInvitationService {
         JsonNode parsed = objectMapper.readTree(cleanJsonEnvelope(content));
         String sceneType = textOrDefault(parsed.path("sceneType").asText(""), "other");
         String summary = textOrDefault(parsed.path("summary").asText(""), defaultSummaryForScene(sceneType));
+        String analysisSummary = textOrDefault(parsed.path("analysisSummary").asText(""), summary);
+        String colorStrategy = textOrDefault(parsed.path("colorStrategy").asText(""), defaultColorStrategyForPalette(sceneType));
         String congratulatoryMessage = clean(parsed.path("congratulatoryMessage").asText(""));
         Map<String, Object> configPatch = new LinkedHashMap<>();
         putColor(configPatch, "bgColor", parsed.path("bgColor").asText(""));
@@ -641,7 +759,10 @@ public class OpenAiInvitationService {
         if (configPatch.isEmpty()) {
             configPatch.putAll(defaultPaletteForScene(sceneType));
         }
-        return new AnalysisResult(summary, congratulatoryMessage, configPatch);
+        if (congratulatoryMessage.isBlank()) {
+            congratulatoryMessage = defaultCongratulatoryMessage(sceneType);
+        }
+        return new AnalysisResult(analysisSummary, colorStrategy, congratulatoryMessage, configPatch);
     }
 
     private String extractResponseContent(JsonNode contentNode) {
@@ -732,7 +853,13 @@ public class OpenAiInvitationService {
         if (raw.startsWith("/uploads/")) {
             return validateUploadFilename(Paths.get(raw).getFileName().toString());
         }
+        if (raw.startsWith("uploads/")) {
+            return validateUploadFilename(Paths.get(raw).getFileName().toString());
+        }
         if (raw.startsWith("file_")) {
+            return validateUploadFilename(raw);
+        }
+        if (isPlainUploadFilename(raw)) {
             return validateUploadFilename(raw);
         }
         if (raw.startsWith("http://") || raw.startsWith("https://")) {
@@ -762,12 +889,14 @@ public class OpenAiInvitationService {
         byte[] body = buildMultipartBody(boundary, payload);
         HttpRequest request = HttpRequest.newBuilder(URI.create(resolveFilesEndpoint(modelAlias)))
             .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+            .header("Accept", "application/json")
             .header(clean(openClawAuthHeader), "bearer".equalsIgnoreCase(clean(openClawAuthType)) ? "Bearer " + key : key)
             .timeout(Duration.ofSeconds(90))
+            .expectContinue(false)
             .POST(HttpRequest.BodyPublishers.ofByteArray(body))
             .build();
 
-        HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IllegalStateException("OpenClaw 파일 업로드 실패(" + response.statusCode() + "): " + response.body());
         }
@@ -787,12 +916,14 @@ public class OpenAiInvitationService {
     private JsonNode postJson(String url, Map<String, Object> payload, String key, Duration timeout) throws Exception {
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
             .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
             .header(clean(openClawAuthHeader), "bearer".equalsIgnoreCase(clean(openClawAuthType)) ? "Bearer " + key : key)
             .timeout(timeout)
+            .expectContinue(false)
             .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload), StandardCharsets.UTF_8))
             .build();
 
-        HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IllegalStateException("OpenClaw 호출 실패(" + response.statusCode() + "): " + response.body());
         }
@@ -800,12 +931,18 @@ public class OpenAiInvitationService {
     }
 
     private BufferedImage loadAnalysisImage(String photoUrl) {
-        String raw = clean(photoUrl);
+        String raw = normalizeImageReference(photoUrl);
         log.info("[AI Invitation] load analysis image: source={}", raw);
         if (raw.startsWith("/uploads/")) {
             return loadNormalizedUploadImage(Paths.get(raw).getFileName().toString());
         }
+        if (raw.startsWith("uploads/")) {
+            return loadNormalizedUploadImage(Paths.get(raw).getFileName().toString());
+        }
         if (raw.startsWith("file_")) {
+            return loadNormalizedUploadImage(raw);
+        }
+        if (isPlainUploadFilename(raw)) {
             return loadNormalizedUploadImage(raw);
         }
         if (raw.startsWith("http://") || raw.startsWith("https://")) {
@@ -832,7 +969,7 @@ public class OpenAiInvitationService {
         if (!cleanedId.isBlank()) {
             MediaFile mediaFile = mediaFileRepository.findById(cleanedId)
                     .orElseThrow(() -> new IllegalStateException("참고 이미지 메타데이터를 찾을 수 없습니다."));
-            String preferredUrl = firstNonBlank(mediaFile.getAnalysisUrl(), mediaFile.getOriginalUrl());
+            String preferredUrl = normalizeImageReference(firstNonBlank(mediaFile.getAnalysisUrl(), mediaFile.getOriginalUrl()));
             if (preferredUrl.isBlank()) {
                 throw new IllegalStateException("참고 이미지 URL이 비어 있습니다.");
             }
@@ -849,7 +986,7 @@ public class OpenAiInvitationService {
             );
         }
 
-        String resolvedFallback = clean(fallbackUrl);
+        String resolvedFallback = normalizeImageReference(fallbackUrl);
         if (resolvedFallback.isBlank()) {
             return new AnalysisImageSource("", "", "image/jpeg");
         }
@@ -864,8 +1001,25 @@ public class OpenAiInvitationService {
     }
 
     private boolean canBuildLocalMediaPath(String reference) {
+        String raw = normalizeImageReference(reference);
+        return raw.startsWith("/uploads/") || raw.startsWith("uploads/") || raw.startsWith("file_") || isPlainUploadFilename(raw);
+    }
+
+    private String normalizeImageReference(String reference) {
         String raw = clean(reference);
-        return raw.startsWith("/uploads/") || raw.startsWith("file_");
+        if (raw.startsWith("uploads/")) {
+            return "/" + raw;
+        }
+        return raw;
+    }
+
+    private boolean isPlainUploadFilename(String reference) {
+        String raw = clean(reference);
+        return !raw.isBlank()
+                && !raw.contains("/")
+                && !raw.contains("\\")
+                && !raw.contains("..")
+                && raw.contains(".");
     }
 
     private String firstNonBlank(String... values) {
@@ -909,14 +1063,6 @@ public class OpenAiInvitationService {
         }
     }
 
-    private Path resolveUploadDirPath() {
-        String configured = clean(uploadDir);
-        if (configured.isBlank()) {
-            return Paths.get("uploads").toAbsolutePath().normalize();
-        }
-        return Paths.get(configured).toAbsolutePath().normalize();
-    }
-
     private String validateUploadFilename(String filename) {
         String safeName = clean(filename);
         if (safeName.isBlank()) {
@@ -926,6 +1072,14 @@ public class OpenAiInvitationService {
             throw new IllegalStateException("업로드 이미지 파일명이 올바르지 않습니다.");
         }
         return safeName;
+    }
+
+    private Path resolveUploadDirPath() {
+        String configured = clean(uploadDir);
+        if (configured.isBlank()) {
+            return Paths.get("uploads");
+        }
+        return Paths.get(configured);
     }
 
     private BufferedImage resizeForAnalysis(BufferedImage source, int maxDimension) {
@@ -1119,6 +1273,16 @@ public class OpenAiInvitationService {
             case "hotel", "luxury" -> "고급스럽고 빛나는 분위기만큼 두 분의 시작도 참 아름답습니다. 결혼을 진심으로 축하드리며, 품격 있고 행복한 결혼 생활이 되시길 바랍니다.";
             case "garden", "floral" -> "꽃처럼 화사한 두 분의 순간이 참 인상적입니다. 결혼을 진심으로 축하드리며, 늘 설레고 다정한 날들이 이어지길 바랍니다.";
             default -> "두 분의 소중한 순간이 참 아름답습니다. 결혼을 진심으로 축하드리며, 오래도록 행복한 결혼 생활이 되시길 바랍니다.";
+        };
+    }
+
+    private String defaultColorStrategyForPalette(String sceneType) {
+        return switch (clean(sceneType).toLowerCase(Locale.ROOT)) {
+            case "forest" -> "유사색 중심의 팔레트로 #EEF5EF, #DCEBDD, #4C8B5F, #2E5A3A, #1F3527를 추천합니다. 숲의 녹음과 자연광을 부드럽게 이어 차분하고 고급스러운 통일감을 만듭니다.";
+            case "sea" -> "유사색 중심의 팔레트로 #EEF7FB, #D9ECF6, #3A84B8, #2E6F9B, #16394F를 추천합니다. 바다와 하늘의 블루 톤을 정제해 맑고 세련된 인상을 유지합니다.";
+            case "hotel", "luxury" -> "단색 확장에 가까운 팔레트로 #F6F0E7, #E8DBC6, #B28A4A, #8D6B36, #2B221A를 추천합니다. 샴페인 골드와 깊은 브라운의 대비가 럭셔리한 깊이를 만듭니다.";
+            case "garden", "floral" -> "유사색 중심의 팔레트로 #FBF4F7, #F5E3EA, #C97A96, #B56785, #4A2A35를 추천합니다. 플로럴 핑크와 로즈 톤을 부드럽게 묶어 로맨틱한 흐름을 만듭니다.";
+            default -> "단색 중심의 팔레트로 #F8F7F4, #EEEAE3, #8B6E5A, #6E5847, #2A2A2A를 추천합니다. 뉴트럴 톤의 농담 대비로 차분하고 고급스러운 기본 균형을 만듭니다.";
         };
     }
 
@@ -1329,7 +1493,7 @@ public class OpenAiInvitationService {
         return value;
     }
 
-    private record AnalysisResult(String summary, String congratulatoryMessage, Map<String, Object> configPatch) {}
+    private record AnalysisResult(String summary, String colorStrategy, String congratulatoryMessage, Map<String, Object> configPatch) {}
     private record UploadPayload(BufferedImage image, byte[] bytes, String contentType, String filename) {}
     private record AnalysisImageSource(String sourceUrl, String mediaPath, String mediaType) {}
 }

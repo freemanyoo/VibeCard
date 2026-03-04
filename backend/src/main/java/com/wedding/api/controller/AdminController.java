@@ -78,8 +78,16 @@ public class AdminController {
                 "meta", aiResult.getOrDefault("meta", Map.of())
             ));
         } catch (IllegalArgumentException e) {
+            log.error("POST /admin/skins/ai-generate validation failed: model={}, template={}",
+                req != null ? req.getModel() : null,
+                req != null ? req.getTemplate() : null,
+                e);
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
+            log.error("POST /admin/skins/ai-generate failed: model={}, template={}",
+                req != null ? req.getModel() : null,
+                req != null ? req.getTemplate() : null,
+                e);
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }

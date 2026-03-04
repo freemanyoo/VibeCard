@@ -57,6 +57,9 @@ export function AuthProvider({ children }) {
     localStorage.setItem("token", newToken);
     localStorage.setItem("refreshToken", newRefreshToken);
     localStorage.setItem("user", JSON.stringify(newUser));
+    if (newUser?.email) {
+      localStorage.setItem("google_login_hint", newUser.email);
+    }
   };
 
   const buildNaverAuthUrl = () => {
@@ -131,6 +134,9 @@ export function AuthProvider({ children }) {
     localStorage.removeItem("token");
     localStorage.removeItem("refreshToken");
     localStorage.removeItem("user");
+    if (window.google?.accounts?.id) {
+      window.google.accounts.id.disableAutoSelect();
+    }
   };
 
   return (

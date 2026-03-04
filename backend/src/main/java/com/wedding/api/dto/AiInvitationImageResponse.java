@@ -10,6 +10,7 @@ import java.util.Map;
 public class AiInvitationImageResponse {
     private boolean success;
     private String analysisSummary;
+    private String colorStrategy;
     private String congratulatoryMessage;
     private Map<String, Object> configPatch;
 }

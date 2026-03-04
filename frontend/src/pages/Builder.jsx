@@ -110,6 +110,8 @@ const BUILDER_TEXT_PICKER_META = {
   heroVenueNameSize: { label: "히어로 예식장명", min: 12, max: 40, textFields: [{ key: "venueDisplayName", label: "예식장명", placeholder: "예식장명" }] },
   heroDDaySize: { label: "D-day 배지", min: 8, max: 24 },
   contentSize: { label: "초대 메시지 본문", min: 12, max: 40, textFields: [{ key: "invitationBodyText", label: "본문 문구", placeholder: "초대 문구" }] },
+  noticeTitleSize: { label: "알림 사항 제목", min: 8, max: 32, textFields: [{ key: "noticeTitleText", label: "제목 문구", placeholder: "예: 알림 사항" }] },
+  noticeContentSize: { label: "알림 사항 내용", min: 10, max: 28, textFields: [{ key: "noticeContentText", label: "안내 문구", placeholder: "알림 내용을 입력하세요." }] },
   familyLineSize: {
     label: "가족 소개", min: 10, max: 30, textFields: [
       { key: "groomFatherText", label: "신랑측 아버지", placeholder: "예: 김아버지" },
@@ -217,7 +219,9 @@ export default function Builder() {
   const [aiInvitationHistory, setAiInvitationHistory] = useState([]);
   const [isAiInvitationGenerating, setIsAiInvitationGenerating] = useState(false);
   const [aiInvitationAnalysis, setAiInvitationAnalysis] = useState("");
+  const [aiInvitationColorStrategy, setAiInvitationColorStrategy] = useState("");
   const [aiInvitationCongrats, setAiInvitationCongrats] = useState("");
+  const [aiInvitationPendingResult, setAiInvitationPendingResult] = useState(null);
   const [mainPhotoMediaFileId, setMainPhotoMediaFileId] = useState(null);
   const [mainPhotoAnalysisUrl, setMainPhotoAnalysisUrl] = useState(null);
 
@@ -322,7 +326,7 @@ export default function Builder() {
     }
   }, [initialData]);
 
-  const updateFormData = (updates) => setFormData((prev) => (typeof updates === 'function' ? updates(prev) : { ...prev, ...updates }));
+  const updateFormData = (updates) => setFormData((prev) => ({ ...prev, ...updates }));
 
   const [skins, setSkins] = useState([]);
   const [selectedSkinId, setSelectedSkinId] = useState(null);
@@ -432,6 +436,27 @@ export default function Builder() {
     if (key === "brideFatherText") updateFormData({ brideFather: value });
     if (key === "brideMotherText") updateFormData({ brideMother: value });
     if (key === "brideRelationText") updateFormData({ brideRelation: value });
+    if (key === "noticeTitleText") updateFormData({ noticeTitle: value });
+    if (key === "noticeContentText") updateFormData({ noticeContent: value });
+  };
+  const getTextFieldEditorValue = (key) => {
+    if (Object.prototype.hasOwnProperty.call(config, key)) {
+      return String(config[key] ?? "");
+    }
+    if (key === "mainTitleText") return String(formData.invitationTitle ?? "");
+    if (key === "groomDisplayName") return String(formData.groom ?? "");
+    if (key === "brideDisplayName") return String(formData.bride ?? "");
+    if (key === "venueDisplayName") return String(formData.venueName ?? "");
+    if (key === "invitationBodyText") return String(formData.invitationMessage ?? "");
+    if (key === "groomFatherText") return String(formData.groomFather ?? "");
+    if (key === "groomMotherText") return String(formData.groomMother ?? "");
+    if (key === "groomRelationText") return String(formData.groomRelation ?? "");
+    if (key === "brideFatherText") return String(formData.brideFather ?? "");
+    if (key === "brideMotherText") return String(formData.brideMother ?? "");
+    if (key === "brideRelationText") return String(formData.brideRelation ?? "");
+    if (key === "noticeTitleText") return String(formData.noticeTitle ?? "");
+    if (key === "noticeContentText") return String(formData.noticeContent ?? "");
+    return String(config[key] ?? "");
   };
   const handleTextSizePick = (key) => {
     setPickedTextKey(key);
@@ -734,13 +759,6 @@ export default function Builder() {
   }, [photoFit]);
 
   const handleSave = async () => {
-    const hasBlob = (formData.photoUrl && formData.photoUrl.startsWith("blob:")) ||
-      (formData.albumPhotos && formData.albumPhotos.some(url => url && url.startsWith("blob:")));
-    if (hasBlob) {
-      alert("아직 사진이 브라우저에서 서버로 업로드 중입니다.\n사진이 완전히 보인 후 잠시만 기다리셨다가 다시 저장해 주세요.");
-      return;
-    }
-
     setIsSaving(true);
     try {
       const resolvedInvitationMessage =
@@ -821,13 +839,23 @@ export default function Builder() {
       alert("업로드 실패");
     }
   };
-  const closeAiInvitationModal = () => setShowAiInvitationModal(false);
+  const closeAiInvitationModal = () => {
+    setShowAiInvitationModal(false);
+    setAiInvitationPendingResult(null);
+    setAiInvitationAnalysis("");
+    setAiInvitationColorStrategy("");
+    setAiInvitationCongrats("");
+  };
   const openAiInvitationModal = () => {
     setAiInvitationImageStyle(String(config.imageStyle || "standard") === "full" ? "full" : "standard");
     setAiInvitationPhotoUrl(formData.photoUrl || null);
     setAiInvitationAnalysisImageUrl(mainPhotoAnalysisUrl || formData.photoUrl || null);
     setAiInvitationSourceImageId(mainPhotoMediaFileId || null);
     setAiInvitationPhotoDirty(false);
+    setAiInvitationPendingResult(null);
+    setAiInvitationAnalysis("");
+    setAiInvitationColorStrategy("");
+    setAiInvitationCongrats("");
     setShowAiInvitationModal(true);
   };
   const handleAiInvitationPhotoUpload = async (e) => {
@@ -836,7 +864,13 @@ export default function Builder() {
     // Show local preview instantly
     const localUrl = URL.createObjectURL(file);
     setAiInvitationPhotoUrl(localUrl);
+    setAiInvitationAnalysisImageUrl(localUrl);
+    setAiInvitationSourceImageId(null);
     setAiInvitationPhotoDirty(true);
+    setAiInvitationPendingResult(null);
+    setAiInvitationAnalysis("");
+    setAiInvitationColorStrategy("");
+    setAiInvitationCongrats("");
 
     try {
       const compressed = await compressImage(file);
@@ -886,11 +920,16 @@ export default function Builder() {
       });
       const configPatch = res.data?.configPatch && typeof res.data.configPatch === "object" ? res.data.configPatch : {};
       setAiInvitationAnalysis(String(res.data?.analysisSummary || ""));
+      setAiInvitationColorStrategy(String(res.data?.colorStrategy || ""));
       setAiInvitationCongrats(String(res.data?.congratulatoryMessage || ""));
       setAiInvitationHistory((prev) => [historyLabel, ...prev.filter((item) => item !== historyLabel)].slice(0, 6));
-      updateConfig({ imageStyle: aiInvitationImageStyle, ...configPatch });
-      updateFormData({ photoUrl: aiInvitationPhotoUrl });
-      setAiInvitationPhotoDirty(false);
+      setAiInvitationPendingResult({
+        configPatch,
+        photoUrl: aiInvitationPhotoUrl,
+        analysisImageUrl: aiInvitationAnalysisImageUrl || aiInvitationPhotoUrl || null,
+        sourceImageId: aiInvitationSourceImageId || null,
+        imageStyle: aiInvitationImageStyle,
+      });
       setSelectedSection("main");
     } catch (err) {
       const message = err.response?.data?.error || err.message || "AI 청첩장 생성 실패";
@@ -920,13 +959,16 @@ export default function Builder() {
       });
       const configPatch = res.data?.configPatch && typeof res.data.configPatch === "object" ? res.data.configPatch : {};
       setAiInvitationAnalysis(String(res.data?.analysisSummary || ""));
+      setAiInvitationColorStrategy(String(res.data?.colorStrategy || ""));
       setAiInvitationCongrats(String(res.data?.congratulatoryMessage || ""));
       setAiInvitationHistory((prev) => [historyLabel, ...prev.filter((item) => item !== historyLabel)].slice(0, 6));
-      updateConfig({ imageStyle: aiInvitationImageStyle, ...configPatch });
-      if (aiInvitationPhotoUrl) {
-        updateFormData({ photoUrl: aiInvitationPhotoUrl });
-        setAiInvitationPhotoDirty(false);
-      }
+      setAiInvitationPendingResult({
+        configPatch,
+        photoUrl: aiInvitationPhotoUrl || null,
+        analysisImageUrl: aiInvitationAnalysisImageUrl || aiInvitationPhotoUrl || null,
+        sourceImageId: aiInvitationSourceImageId || null,
+        imageStyle: aiInvitationImageStyle,
+      });
       setSelectedSection("main");
     } catch (err) {
       const message = err.response?.data?.error || err.message || "AI 청첩장 생성 실패";
@@ -935,6 +977,23 @@ export default function Builder() {
       setIsAiInvitationGenerating(false);
     }
   };
+  const handleApplyAiInvitationResult = () => {
+    if (!aiInvitationPendingResult) return;
+    const nextPatch = aiInvitationPendingResult.configPatch && typeof aiInvitationPendingResult.configPatch === "object"
+      ? aiInvitationPendingResult.configPatch
+      : {};
+    updateConfig({ imageStyle: aiInvitationPendingResult.imageStyle || aiInvitationImageStyle, ...nextPatch });
+    if (aiInvitationPendingResult.photoUrl) {
+      updateFormData({ photoUrl: aiInvitationPendingResult.photoUrl });
+      setMainPhotoMediaFileId(aiInvitationPendingResult.sourceImageId || null);
+      setMainPhotoAnalysisUrl(aiInvitationPendingResult.analysisImageUrl || aiInvitationPendingResult.photoUrl);
+      setAiInvitationPhotoDirty(false);
+    }
+    setAiInvitationPendingResult(null);
+    setShowAiInvitationModal(false);
+    setSelectedSection("main");
+  };
+
   const aiInvitationPreviewData = {
     ...formData,
     mainPhotoUrl: aiInvitationPhotoUrl || formData.photoUrl,
@@ -943,7 +1002,8 @@ export default function Builder() {
     id: initialData?.id,
     config: {
       ...config,
-      imageStyle: aiInvitationImageStyle,
+      ...(aiInvitationPendingResult?.configPatch && typeof aiInvitationPendingResult.configPatch === "object" ? aiInvitationPendingResult.configPatch : {}),
+      imageStyle: aiInvitationPendingResult?.imageStyle || aiInvitationImageStyle,
       mainPhotoZoom: photoZoom,
       mainPhotoAspectRatio: photoAspectRatio,
     },
@@ -1411,7 +1471,7 @@ export default function Builder() {
                         <div key={f.key} className="space-y-1.5">
                           <label className="text-[10px] font-bold text-zinc-500">{f.label}</label>
                           <textarea
-                            value={String(config[f.key] ?? "")}
+                            value={getTextFieldEditorValue(f.key)}
                             onChange={(e) => updateTextOverride(f.key, e.target.value)}
                             rows={2}
                             className="w-full p-2.5 border rounded-lg text-xs resize-y"
@@ -1497,94 +1557,79 @@ export default function Builder() {
               <label className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Gallery (Max 9)</label>
               <button onClick={(e) => { e.stopPropagation(); document.getElementById("bulk-upload")?.click(); }} className="px-3 py-1.5 bg-zinc-900 text-white text-[10px] font-bold rounded-lg">일괄 업로드
                 <input id="bulk-upload" type="file" multiple accept="image/*" className="hidden" onChange={async (e) => {
-                  const files = Array.from(e.target.files || []).slice(0, 9);
-                  if (!files.length) return;
+                  const files = Array.from(e.target.files || []).slice(0, 9); if (!files.length) return;
                   const filesArray = Array.from(files);
+                  const initialAlbumPhotos = normalizeAlbumPhotos(formData.albumPhotos);
+                  const filesToUpload = [];
+                  const newAlbumPhotos = [...initialAlbumPhotos];
 
-                  let filesToUpload = [];
-                  updateFormData((prev) => {
-                    const newAlbumPhotos = normalizeAlbumPhotos(prev.albumPhotos);
-                    let currentEmptyIdx = 0;
-                    for (let i = 0; i < filesArray.length; i++) {
-                      const file = filesArray[i];
-                      const emptyIdx = newAlbumPhotos.findIndex((v, idx) => !v && idx >= currentEmptyIdx);
-                      if (emptyIdx === -1) break;
-                      const localUrl = URL.createObjectURL(file);
-                      newAlbumPhotos[emptyIdx] = localUrl;
-                      filesToUpload.push({ file, index: emptyIdx, localUrl });
-                      currentEmptyIdx = emptyIdx + 1;
-                    }
-                    return { ...prev, albumPhotos: newAlbumPhotos };
-                  });
+                  // First pass: create local previews and prepare for upload
+                  let currentEmptyIdx = 0;
+                  for (let i = 0; i < filesArray.length; i++) {
+                    const file = filesArray[i];
+                    const emptyIdx = newAlbumPhotos.findIndex((v, idx) => !v && idx >= currentEmptyIdx);
+                    if (emptyIdx === -1) break; // No more empty slots
+                    const localUrl = URL.createObjectURL(file);
+                    newAlbumPhotos[emptyIdx] = localUrl;
+                    filesToUpload.push({ file, index: emptyIdx, localUrl });
+                    currentEmptyIdx = emptyIdx + 1;
+                  }
+                  updateFormData({ albumPhotos: newAlbumPhotos });
 
-                  // Sequential pass: compress and upload one by one to prevent OOM
+                  // Second pass: upload files and replace local URLs with server URLs
                   for (const { file, index, localUrl } of filesToUpload) {
+                    const compressed = await compressImage(file);
+                    const d = new FormData();
+                    d.append("file", compressed);
                     try {
-                      // Comporess sequentially to save memory
-                      const compressed = await compressImage(file);
-                      const d = new FormData();
-                      d.append("file", compressed);
-
                       const r = await api.post("/invitations/upload", d, { headers: { "Content-Type": "multipart/form-data" } });
-
-                      if (r.data?.success && r.data?.url) {
-                        updateFormData((prev) => {
-                          const latest = normalizeAlbumPhotos(prev.albumPhotos);
-                          if (latest[index] === localUrl) {
-                            latest[index] = r.data.url;
-                            URL.revokeObjectURL(localUrl);
+                      if (r.data.success && r.data.url) {
+                        // Get the latest state to ensure we're updating correctly
+                        updateFormData((prevFormData) => {
+                          const latestAlbumPhotos = normalizeAlbumPhotos(prevFormData.albumPhotos);
+                          // Only replace if the current item at 'index' is still the localUrl we set
+                          if (latestAlbumPhotos[index] === localUrl) {
+                            latestAlbumPhotos[index] = r.data.url;
+                            URL.revokeObjectURL(localUrl); // Clean up the blob URL
                           }
-                          return { ...prev, albumPhotos: latest };
+                          return { ...prevFormData, albumPhotos: latestAlbumPhotos };
                         });
                       } else {
-                        throw new Error(r.data?.error || "Upload failed");
+                        // If upload fails, revert to null or handle error
+                        updateFormData((prevFormData) => {
+                          const latestAlbumPhotos = normalizeAlbumPhotos(prevFormData.albumPhotos);
+                          if (latestAlbumPhotos[index] === localUrl) {
+                            latestAlbumPhotos[index] = null;
+                            URL.revokeObjectURL(localUrl);
+                          }
+                          return { ...prevFormData, albumPhotos: latestAlbumPhotos };
+                        });
                       }
-                    } catch (err) {
-                      console.error("Bulk upload err at idx", index, err);
-                      // On failure, remove the preview
-                      updateFormData((prev) => {
-                        const latest = normalizeAlbumPhotos(prev.albumPhotos);
-                        if (latest[index] === localUrl) {
-                          latest[index] = null;
+                    } catch {
+                      // If upload fails, revert to null or handle error
+                      updateFormData((prevFormData) => {
+                        const latestAlbumPhotos = normalizeAlbumPhotos(prevFormData.albumPhotos);
+                        if (latestAlbumPhotos[index] === localUrl) {
+                          latestAlbumPhotos[index] = null;
                           URL.revokeObjectURL(localUrl);
                         }
-                        return { ...prev, albumPhotos: latest };
+                        return { ...prevFormData, albumPhotos: latestAlbumPhotos };
                       });
                     }
                   }
-
-                  // Clear input value so it can trigger again
-                  if (e.target) e.target.value = "";
                 }} />
               </button>
             </div>
             <div className="mt-6 grid grid-cols-3 gap-2">
               {Array.from({ length: 9 }).map((_, i) => (
                 <div key={i} className="relative aspect-square bg-zinc-50 border border-zinc-100 rounded-xl overflow-hidden group">
-                  {formData.albumPhotos[i] ? (<><img src={formData.albumPhotos[i]} alt={`album-${i}`} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { if (e.currentTarget.dataset.fallback === "1") return; e.currentTarget.dataset.fallback = "1"; e.currentTarget.src = formData.albumPhotos[i]; }} /><button onClick={() => { const n = normalizeAlbumPhotos(formData.albumPhotos); const oldUrl = n[i]; n[i] = null; updateFormData({ albumPhotos: n }); if (oldUrl && oldUrl.startsWith('blob:')) URL.revokeObjectURL(oldUrl); }} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"><X size={10} /></button></>) : (
+                  {formData.albumPhotos[i] ? (<><img src={toThumbnailUrl(formData.albumPhotos[i])} alt={`album-${i}`} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { if (e.currentTarget.dataset.fallback === "1") return; e.currentTarget.dataset.fallback = "1"; e.currentTarget.src = formData.albumPhotos[i]; }} /><button onClick={() => { const n = normalizeAlbumPhotos(formData.albumPhotos); const oldUrl = n[i]; n[i] = null; updateFormData({ albumPhotos: n }); if (oldUrl && oldUrl.startsWith('blob:')) URL.revokeObjectURL(oldUrl); }} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"><X size={10} /></button></>) : (
                     <div className="absolute inset-0 flex items-center justify-center text-zinc-300"><Upload size={16} /><input type="file" accept="image/*" onChange={async (e) => {
                       const f = e.target.files?.[0]; if (!f) return;
                       const localUrl = URL.createObjectURL(f);
-                      updateFormData((prev) => {
-                        const n = normalizeAlbumPhotos(prev.albumPhotos);
-                        n[i] = localUrl;
-                        return { ...prev, albumPhotos: n };
-                      });
-                      const compressed = await compressImage(f);
-                      const d = new FormData();
-                      d.append("file", compressed);
-                      try {
-                        const r = await api.post("/invitations/upload", d, { headers: { "Content-Type": "multipart/form-data" } });
-                        if (r.data.success && r.data.url) {
-                          updateFormData((prevFormData) => {
-                            const latestN = normalizeAlbumPhotos(prevFormData.albumPhotos);
-                            if (latestN[i] === localUrl) {
-                              latestN[i] = r.data.url;
-                              URL.revokeObjectURL(localUrl);
-                            }
-                            return { ...prevFormData, albumPhotos: latestN };
-                          });
-                        } else {
+                      const n = normalizeAlbumPhotos(formData.albumPhotos); n[i] = localUrl; updateFormData({ albumPhotos: n });
+                      const compressed = await compressImage(f); const d = new FormData(); d.append("file", compressed); try {
+                        const r = await api.post("/invitations/upload", d, { headers: { "Content-Type": "multipart/form-data" } }); if (r.data.success && r.data.url) { const latestN = normalizeAlbumPhotos(formData.albumPhotos); if (latestN[i] === localUrl) { latestN[i] = r.data.url; URL.revokeObjectURL(localUrl); } updateFormData({ albumPhotos: latestN }); } else { // If upload fails, revert to null
                           updateFormData((prevFormData) => {
                             const latestN = normalizeAlbumPhotos(prevFormData.albumPhotos);
                             if (latestN[i] === localUrl) {
@@ -1594,7 +1639,7 @@ export default function Builder() {
                             return { ...prevFormData, albumPhotos: latestN };
                           });
                         }
-                      } catch {
+                      } catch { // If upload fails, revert to null
                         updateFormData((prevFormData) => {
                           const latestN = normalizeAlbumPhotos(prevFormData.albumPhotos);
                           if (latestN[i] === localUrl) {
@@ -1637,13 +1682,13 @@ export default function Builder() {
           >
             AI 청첩장 생성
           </button>
-          <button onClick={handleSave} disabled={isSaving} className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-bold tracking-widest uppercase hover:scale-[1.02] active:scale-95 transition-all disabled:bg-zinc-300">{isSaving ? "Saving..." : "Save Invitation"}</button>
+          <button onClick={handleSave} disabled={isSaving} className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-bold tracking-widest uppercase hover:scale-[1.02] active:scale-95 transition-all disabled:bg-zinc-300">{isSaving ? "저장 중..." : "청첩장 저장"}</button>
         </div>
       </div>
       <div className="flex-1 flex flex-col relative overflow-hidden bg-zinc-100">
         <div className="absolute top-6 right-6 z-30 flex bg-white/80 backdrop-blur-md p-1 rounded-2xl border border-zinc-200 shadow-xl">
-          <button onClick={() => setViewMode("mobile")} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black transition-all ${viewMode === "mobile" ? "bg-zinc-900 text-white shadow-lg" : "text-zinc-400 hover:text-zinc-600"}`}><Smartphone size={14} /> MOBILE</button>
-          <button onClick={() => setViewMode("web")} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black transition-all ${viewMode === "web" ? "bg-zinc-900 text-white shadow-lg" : "text-zinc-400 hover:text-zinc-600"}`}><Monitor size={14} /> WEB</button>
+          <button onClick={() => setViewMode("mobile")} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black transition-all ${viewMode === "mobile" ? "bg-zinc-900 text-white shadow-lg" : "text-zinc-400 hover:text-zinc-600"}`}><Smartphone size={14} /> 모바일</button>
+          <button onClick={() => setViewMode("web")} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black transition-all ${viewMode === "web" ? "bg-zinc-900 text-white shadow-lg" : "text-zinc-400 hover:text-zinc-600"}`}><Monitor size={14} /> 웹</button>
         </div>
         <div className="flex-1 overflow-y-auto scroll-smooth">
           <div className={`min-h-full flex flex-col items-center ${viewMode === "mobile" ? "pt-20" : ""}`}>
@@ -1871,21 +1916,23 @@ export default function Builder() {
                         )}
                       </div>
                     </div>
-                    {(aiInvitationAnalysis || aiInvitationCongrats) && (
-                      <div className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                        {aiInvitationAnalysis && (
-                          <div className="space-y-1">
-                            <p className="text-[11px] font-bold text-zinc-500">이미지 분석</p>
-                            <p className="text-sm leading-6 text-zinc-700">{aiInvitationAnalysis}</p>
-                          </div>
-                        )}
-                        {aiInvitationCongrats && (
-                          <div className="space-y-1">
-                            <p className="text-[11px] font-bold text-zinc-500">축하문</p>
-                            <p className="text-sm leading-6 whitespace-pre-line text-zinc-700">{aiInvitationCongrats}</p>
-                          </div>
-                        )}
+                    {(aiInvitationAnalysis || aiInvitationColorStrategy || aiInvitationCongrats) && (
+                      <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                        <p className="text-sm leading-6 text-zinc-700">
+                          {[aiInvitationAnalysis, aiInvitationColorStrategy, aiInvitationCongrats]
+                            .filter(Boolean)
+                            .join(" ")}
+                        </p>
                       </div>
+                    )}
+                    {aiInvitationPendingResult && (
+                      <button
+                        type="button"
+                        onClick={handleApplyAiInvitationResult}
+                        className="w-full py-3 rounded-2xl border border-zinc-900 bg-white text-zinc-900 text-sm font-bold"
+                      >
+                        사용하기
+                      </button>
                     )}
                     <button
                       type="button"

@@ -440,6 +440,8 @@ export default function InvitationView({ data, template, isPreview = false, comp
   const brideDisplayName = String(config.brideDisplayName || data.brideName || data.bride || "신부");
   const venueDisplayName = String(config.venueDisplayName || config.heroVenueNameText || data.venueName || "예식장 정보");
   const invitationBodyText = String(config.invitationBodyText || data.invitationMessage || "");
+  const noticeTitleText = String(config.noticeTitleText || data.noticeTitle || "알림 사항");
+  const noticeContentText = String(config.noticeContentText || data.noticeContent || "");
   const legacyGroomParentLine = String(config.groomParentLineText || "");
   const legacyGroomParts = legacyGroomParentLine.split("·").map((v) => v.trim()).filter(Boolean);
   const groomFatherText = String(config.groomFatherText || legacyGroomParts[0] || data.groomFather || "");
@@ -463,6 +465,8 @@ export default function InvitationView({ data, template, isPreview = false, comp
   const heroTimeSize = dateSize;
   const saveTheDateSize = config.saveTheDateSize ?? typoFallback.saveTheDateSize ?? dateSize;
   const contentSize = config.contentSize ?? typoFallback.contentSize;
+  const noticeTitleSize = config.noticeTitleSize ?? typoFallback.noticeTitleSize ?? 10;
+  const noticeContentSize = config.noticeContentSize ?? typoFallback.noticeContentSize ?? 14;
   const heroVenueNameSize = config.heroVenueNameSize ?? typoFallback.heroVenueNameSize ?? 18;
   const heroDDaySize = config.heroDDaySize ?? typoFallback.heroDDaySize ?? 10;
   const familyLineSize = config.familyLineSize ?? typoFallback.familyLineSize ?? 16;
@@ -1165,7 +1169,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
       )}
 
       {/* ===== HERO SECTION ===== */}
-      <InteractiveSection id="main" dataSection="hero" className={`inv-hero text-center relative ${isFullImage ? "overflow-hidden flex flex-col items-center justify-center box-border" : "flex flex-col items-center"}`} style={{ ...heroSectionStyle, paddingTop: s(isFullImage ? 48 : (useCompactHeroTopSpacing ? 64 : 80)), paddingBottom: s(isFullImage ? 48 : (useCompactHeroTopSpacing ? 80 : 96)), gap: s(isFullImage ? 32 : 48) }} isPreview={isPreview} onSelectSection={onSelectSection} activeSection={activeSection} pointColor={pointColor} showPreviewOutline={false} disableActiveScale containerRef={heroSectionRef}>
+      <InteractiveSection id="main" dataSection="hero" className={`inv-hero w-full max-w-full text-center relative ${isFullImage ? "overflow-hidden flex flex-col items-center justify-center box-border" : "flex flex-col items-center"}`} style={{ ...heroSectionStyle, paddingTop: s(isFullImage ? 48 : (useCompactHeroTopSpacing ? 64 : 80)), paddingBottom: s(isFullImage ? 48 : (useCompactHeroTopSpacing ? 80 : 96)), gap: s(isFullImage ? 32 : 48) }} isPreview={isPreview} onSelectSection={onSelectSection} activeSection={activeSection} pointColor={pointColor} showPreviewOutline={false} disableActiveScale containerRef={heroSectionRef}>
         {isFullImage && (
           <div
             ref={setFullPhotoContainerRef}
@@ -1542,8 +1546,24 @@ export default function InvitationView({ data, template, isPreview = false, comp
 
       <InteractiveSection id="notice" dataSection="notice" className="inv-notice border-y border-current/5" style={{ backgroundColor: subBgColor, paddingTop: s(80), paddingBottom: s(128), paddingLeft: s(20), paddingRight: s(20) }} isPreview={isPreview} onSelectSection={onSelectSection} activeSection={activeSection} pointColor={pointColor}>
         <div className="mx-auto" style={{ maxWidth: s(312.5), display: 'flex', flexDirection: 'column', gap: s(40) }}>
-          <div className="text-center"><h2 className="inv-section-title text-[10px] font-black uppercase tracking-[0.4em] opacity-30" style={{ color: sectionTitleColor }}>{data.noticeTitle || "알림 사항"}</h2></div>
-          <div className="font-light opacity-80 shadow-sm" style={{ backgroundColor: bgColor, color: textColor, padding: s(32), borderRadius: s(sectionRadius), fontSize: s(14), lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{data.noticeContent}</div>
+          <div className="text-center">
+            <h2
+              data-text-pick="1"
+              onClick={(e) => pickSize(e, "noticeTitleSize")}
+              className="inv-section-title font-black uppercase tracking-[0.4em] opacity-30"
+              style={{ color: sectionTitleColor, fontSize: `${s(noticeTitleSize)}px`, ...pickableStyle }}
+            >
+              {noticeTitleText}
+            </h2>
+          </div>
+          <div
+            data-text-pick="1"
+            onClick={(e) => pickSize(e, "noticeContentSize")}
+            className="font-light opacity-80 shadow-sm"
+            style={{ backgroundColor: bgColor, color: textColor, padding: s(32), borderRadius: s(sectionRadius), fontSize: `${s(noticeContentSize)}px`, lineHeight: 1.6, whiteSpace: 'pre-wrap', ...pickableStyle }}
+          >
+            {noticeContentText}
+          </div>
         </div>
       </InteractiveSection>
 

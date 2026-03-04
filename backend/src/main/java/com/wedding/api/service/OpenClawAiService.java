@@ -3,6 +3,7 @@ package com.wedding.api.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -18,9 +19,14 @@ import java.util.Locale;
 import java.util.Map;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class OpenClawAiService {
     private final ObjectMapper objectMapper;
+    private final HttpClient httpClient = HttpClient.newBuilder()
+        .version(HttpClient.Version.HTTP_1_1)
+        .connectTimeout(Duration.ofSeconds(15))
+        .build();
 
     @Value("${openclaw.base-url:}")
     private String baseUrl;
@@ -117,9 +123,13 @@ public class OpenClawAiService {
         );
 
         try {
+            log.info("OpenClaw AI request: alias={}, endpoint={}, model={}, localPurpose={}",
+                alias, endpoint, modelName, normalizeLocalPurpose(localPurpose));
             HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(endpoint))
                 .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
                 .timeout(Duration.ofSeconds(60))
+                .expectContinue(false)
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload), StandardCharsets.UTF_8));
 
             String cleanedAuthType = cleanEnv(authType);
@@ -130,8 +140,10 @@ public class OpenClawAiService {
                 builder.header(cleanedAuthHeader, resolvedToken);
             }
 
-            HttpResponse<String> resp = HttpClient.newHttpClient().send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> resp = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+                log.error("OpenClaw AI non-2xx response: alias={}, endpoint={}, status={}, body={}",
+                    alias, endpoint, resp.statusCode(), resp.body());
                 throw new IllegalStateException("OpenClaw 호출 실패(" + resp.statusCode() + "): " + resp.body());
             }
 
@@ -139,7 +151,11 @@ public class OpenClawAiService {
             String jsonText = extractJsonObject(text);
             return objectMapper.readValue(jsonText, new TypeReference<>() {});
         } catch (Exception e) {
-            throw new IllegalStateException("AI 스킨 생성 실패: " + e.getMessage(), e);
+            String detail = e.getMessage() == null || e.getMessage().isBlank()
+                ? e.getClass().getSimpleName()
+                : e.getMessage();
+            log.error("OpenClaw AI request failed: alias={}, localPurpose={}", alias, normalizeLocalPurpose(localPurpose), e);
+            throw new IllegalStateException("AI 스킨 생성 실패: " + detail, e);
         }
     }
 
@@ -162,14 +178,18 @@ public class OpenClawAiService {
         }
 
         if ("per_model_endpoint".equalsIgnoreCase(mode) || "multi_endpoint".equalsIgnoreCase(mode)) {
-            return switch (alias) {
-                case "openclaw1" -> join(baseUrl, pathOpenClaw1);
-                case "openclaw2" -> join(baseUrl, pathOpenClaw2);
-                case "openclaw3" -> join(baseUrl, pathOpenClaw3);
-                default -> join(baseUrl, chatPath);
+            String configuredPath = switch (alias) {
+                case "openclaw1" -> cleanEnv(pathOpenClaw1);
+                case "openclaw2" -> cleanEnv(pathOpenClaw2);
+                case "openclaw3" -> cleanEnv(pathOpenClaw3);
+                default -> "";
             };
+            if (configuredPath.isBlank()) {
+                return ensureChatPath(join(baseUrl, chatPath));
+            }
+            return ensureChatPath(join(baseUrl, configuredPath));
         }
-        return join(baseUrl, chatPath);
+        return ensureChatPath(join(baseUrl, chatPath));
     }
 
     private String ensureChatPath(String url) {

@@ -308,8 +308,17 @@ const isDarkHex = (value) => {
 
 const normalizeConfigForSave = (rawConfig = {}) => {
   const next = { ...rawConfig };
-  // Removed the forced color overriding logic for 'full' image style 
-  // to allow users to set their own custom colors without the system resetting them.
+  const imageStyle = String(next.imageStyle || "standard").toLowerCase();
+  if (imageStyle !== "full") return next;
+  const darkBg = isDarkHex(next.bgColor) || isDarkHex(next.subBgColor);
+  const heroColor = darkBg ? "#FFFFFF" : "#111111";
+  next.titleColor = heroColor;
+  next.nameColor = heroColor;
+  next.dateColor = heroColor;
+  next.saveTheDateColor = heroColor;
+  next.heroVenueColor = heroColor;
+  next.heroDdayColor = heroColor;
+  next.heroTextColorMode = "custom";
   return next;
 };
 
@@ -657,7 +666,7 @@ export default function AdminSkins() {
     return `${nx}% ${ny}%`;
   };
 
-  const fallbackImage = ""; // No sample image by default for new skins
+  const fallbackImage = "https://images.unsplash.com/photo-1465495976277-4387d4b0b4c6?q=80&w=1200&auto=format&fit=crop";
   const displayPhotoUrl = thumbnail || fallbackImage;
 
   useEffect(() => {
@@ -811,14 +820,6 @@ export default function AdminSkins() {
     // 1. Show local preview instantly
     const localUrl = URL.createObjectURL(file);
     setThumbnail(localUrl);
-
-    // 1-1. Detect aspect ratio
-    const imgMeasure = new Image();
-    imgMeasure.src = localUrl;
-    imgMeasure.onload = () => {
-      const ratio = imgMeasure.width / imgMeasure.height;
-      updateConfig({ mainPhotoAspectRatio: ratio });
-    };
 
     try {
       // 2. Background compression and upload
@@ -1057,7 +1058,11 @@ ${fontCatalogText}
       groomFather: "김아빠", groomMother: "이엄마", groomRelation: "차남", groomPhone: "010-1234-5678",
       brideFather: "이아빠", brideMother: "박엄마", brideRelation: "장녀", bridePhone: "010-9876-5432",
       dDayEnabled: true, navigationEnabled: true,
-      albumPhotos: [],
+      albumPhotos: [
+        "https://images.unsplash.com/photo-1519741497674-611481863552?w=800",
+        "https://images.unsplash.com/photo-1511285560929-80b456fea0bc?w=800",
+        "https://images.unsplash.com/photo-1465495976277-4387d4b0b4c6?w=800",
+      ],
       bankAccounts: [
         { ownerType: "신랑측", bankName: "국민은행", accountNumber: "110-123-456789", ownerName: "김철수" },
         { ownerType: "신부측", bankName: "하나은행", accountNumber: "123-456789-01234", ownerName: "이영희" },
@@ -1356,43 +1361,26 @@ ${fontCatalogText}
                 <input id="admin-photo-upload" type="file" accept="image/*" onChange={handleThumbnailUpload} className="hidden" />
                 <div
                   ref={editorPhotoContainerRef}
-                  className={`relative w-[303px] h-[440px] mx-auto bg-zinc-50 border-2 border-dashed border-zinc-200 rounded-2xl overflow-hidden ${thumbnail ? "cursor-grab" : "cursor-pointer"}`}
+                  className={`relative w-[303px] h-[440px] mx-auto bg-zinc-50 border-2 border-dashed border-zinc-200 rounded-2xl overflow-hidden cursor-grab`}
                   style={{
                     "--photo-x": parsePhotoPosition(photoPosition).x,
                     "--photo-y": parsePhotoPosition(photoPosition).y,
                   }}
-                  onClick={(e) => {
-                    if (!thumbnail) {
-                      e.stopPropagation();
-                      document.getElementById("admin-photo-upload")?.click();
-                    }
-                  }}
-                  onMouseDown={(e) => {
-                    if (thumbnail) {
-                      e.stopPropagation();
-                      handleMouseDown(e);
-                    }
-                  }}
-                  onTouchStart={(e) => {
-                    if (thumbnail) {
-                      e.stopPropagation();
-                      handleTouchStart(e);
-                    }
-                  }}
+                  onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e); }}
+                  onTouchStart={(e) => { e.stopPropagation(); handleTouchStart(e); }}
                 >
                   <div
                     className="absolute inset-0 w-full h-full pointer-events-none"
                     style={{
-                      backgroundImage: displayPhotoUrl ? `url("${displayPhotoUrl}")` : "none",
+                      backgroundImage: `url("${displayPhotoUrl}")`,
                       backgroundRepeat: "no-repeat",
                       backgroundPosition: getEditorCoverBgPosition(),
                       backgroundSize: getEditorCoverBgSize(),
                     }}
                   />
                   {!thumbnail && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/5 text-zinc-300 gap-2 pointer-events-none group-hover:bg-black/[0.08] transition-all">
-                      <Upload size={32} />
-                      <span className="text-[10px] font-bold">사진을 업로드해 주세요 (미리보기용)</span>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 text-white gap-2 pointer-events-none">
+                      <span className="text-[10px] font-bold">기본 제공 샘플 이미지입니다.</span>
                     </div>
                   )}
                 </div>
@@ -1480,10 +1468,12 @@ ${fontCatalogText}
           </div>
           <div className="p-6 bg-white border-t border-zinc-100"><p className="text-[10px] text-zinc-400 mb-2">색상·폰트 등 변경 후 아래 버튼을 누르면 DB에 저장됩니다.</p><button onClick={editingId ? () => handleUpdate(editingId) : handleCreate} className="w-full py-4 bg-zinc-900 text-white rounded-xl text-xs font-black tracking-widest uppercase hover:bg-black shadow-xl flex items-center justify-center gap-2"><Check size={16} /> {editingId ? "변경 사항 DB 저장" : "디자인 게시"}</button></div>
         </div>
-        <div className="flex-1 bg-white flex flex-col px-4 md:px-8 lg:px-12 py-8 overflow-hidden relative border-l border-zinc-100">
-          <div className="absolute top-8 left-8 right-8 flex items-center justify-between">
+        <div className="flex-1 flex flex-col relative overflow-hidden bg-zinc-100">
+          <div className="absolute top-6 left-6 z-30">
             <span className="text-[11px] font-bold uppercase tracking-widest font-mono text-zinc-500">Live Simulation</span>
-            <div className="flex rounded-xl bg-zinc-100 p-1 gap-0.5">
+          </div>
+          <div className="absolute top-6 right-6 z-30 flex rounded-2xl bg-white/80 backdrop-blur-md p-1 border border-zinc-200 shadow-xl">
+            <div className="flex gap-0.5">
               <button
                 type="button"
                 onClick={() => setPreviewMode("mobile")}
@@ -1500,14 +1490,33 @@ ${fontCatalogText}
               </button>
             </div>
           </div>
-          <div className="flex-1 flex items-center justify-center min-h-0 pt-14">
-            {previewMode === "mobile" ? (
-              <MobileFrame className="scale-[0.7] lg:scale-[0.85] xl:scale-100" backgroundColor={config.bgColor || "#ffffff"}>
-                <div className="absolute inset-0 overflow-y-auto hide-scrollbar" style={{ backgroundColor: config.bgColor || "#ffffff" }}>
+          <div className="flex-1 overflow-y-auto scroll-smooth">
+            <div className={`min-h-full flex flex-col items-center ${previewMode === "mobile" ? "pt-20" : ""}`}>
+              {previewMode === "mobile" ? (
+                <MobileFrame backgroundColor={config.bgColor || "#ffffff"}>
+                  <div className="absolute inset-0 overflow-y-auto hide-scrollbar" style={{ backgroundColor: config.bgColor || "#ffffff" }}>
+                    <InvitationView
+                      template={template}
+                      isPreview={true}
+                      onSelectSection={(id) => { setSelectedElement(id); const el = document.getElementById(`control-${id}`); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); }}
+                      activeSection={selectedElement}
+                      onTextSizePick={setPickedTextKey}
+                      onMouseDown={handleMouseDown}
+                      onTouchStart={handleTouchStart}
+                      onPhotoClick={handlePhotoClick}
+                      previewPhotoContainerRef={previewPhotoContainerRef}
+                      data={previewData}
+                      disableMainPhotoOverlay={String(previewData?.config?.imageStyle || "standard") !== "full"}
+                      forceFullImageDarken
+                    />
+                  </div>
+                </MobileFrame>
+              ) : (
+                <div className="w-full max-w-[800px] shadow-2xl overflow-hidden" style={{ backgroundColor: config.bgColor || "#ffffff" }}>
                   <InvitationView
                     template={template}
                     isPreview={true}
-                    showFormsInPreview={true}
+                    previewUseLivePhotoLayout
                     onSelectSection={(id) => { setSelectedElement(id); const el = document.getElementById(`control-${id}`); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); }}
                     activeSection={selectedElement}
                     onTextSizePick={setPickedTextKey}
@@ -1520,27 +1529,8 @@ ${fontCatalogText}
                     forceFullImageDarken
                   />
                 </div>
-              </MobileFrame>
-            ) : (
-              <div className="w-full max-w-2xl h-full max-h-[calc(100vh-10rem)] overflow-y-auto rounded-2xl border border-zinc-200 shadow-xl" style={{ backgroundColor: config.bgColor || "#ffffff" }}>
-                <InvitationView
-                  template={template}
-                  isPreview={true}
-                  previewUseLivePhotoLayout={true}
-                  showFormsInPreview={true}
-                  onSelectSection={(id) => { setSelectedElement(id); const el = document.getElementById(`control-${id}`); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); }}
-                  activeSection={selectedElement}
-                  onTextSizePick={setPickedTextKey}
-                  onMouseDown={handleMouseDown}
-                  onTouchStart={handleTouchStart}
-                  onPhotoClick={handlePhotoClick}
-                  previewPhotoContainerRef={previewPhotoContainerRef}
-                  data={previewData}
-                  disableMainPhotoOverlay={String(previewData?.config?.imageStyle || "standard") !== "full"}
-                  forceFullImageDarken
-                />
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>

@@ -4,6 +4,9 @@
 # Legacy leftover folder from the old nested structure
 react/
 
+# Root env
+.env.prod
+
 # Frontend
 frontend/node_modules/
 frontend/dist/
