@@ -63,6 +63,10 @@ const LightboxHost = forwardRef(function LightboxHost(_, ref) {
   const [ready, setReady] = useState(false);
   const startXRef = useRef(null);
   const deltaXRef = useRef(0);
+  const s = (n) => {
+    const value = typeof n === "string" ? Number.parseFloat(n) : Number(n);
+    return Number.isFinite(value) ? value : 0;
+  };
 
   useImperativeHandle(ref, () => ({
     open(nextItems, nextIndex = 0) {
@@ -253,6 +257,10 @@ const LightboxHost = forwardRef(function LightboxHost(_, ref) {
 });
 
 function InteractiveSection({ id, className, children, dataSection, style, isPreview, onSelectSection, activeSection, pointColor, showPreviewOutline = true, disableActiveScale = false, containerRef = null }) {
+  const s = (n) => {
+    const value = typeof n === "string" ? Number.parseFloat(n) : Number(n);
+    return Number.isFinite(value) ? value : 0;
+  };
   const activeClass = isPreview && activeSection === id
     ? (disableActiveScale ? "z-10" : "z-10 scale-[1.02]")
     : "";
@@ -1558,7 +1566,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
           />
         </div>
         {data.navigationEnabled && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: s(12), width: '100%', maxWidth: s(312.5) }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: s(12), width: '100%', maxWidth: '100%' }}>
             {[
               { key: "kakao", name: "KakaoNavi", color: "bg-[#FEE500]" },
               { key: "tmap", name: "Tmap", color: "bg-zinc-900" },
