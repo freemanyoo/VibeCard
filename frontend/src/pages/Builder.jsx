@@ -322,7 +322,7 @@ export default function Builder() {
     }
   }, [initialData]);
 
-  const updateFormData = (updates) => setFormData((prev) => ({ ...prev, ...updates }));
+  const updateFormData = (updates) => setFormData((prev) => (typeof updates === 'function' ? updates(prev) : { ...prev, ...updates }));
 
   const [skins, setSkins] = useState([]);
   const [selectedSkinId, setSelectedSkinId] = useState(null);
@@ -734,6 +734,13 @@ export default function Builder() {
   }, [photoFit]);
 
   const handleSave = async () => {
+    const hasBlob = (formData.photoUrl && formData.photoUrl.startsWith("blob:")) ||
+      (formData.albumPhotos && formData.albumPhotos.some(url => url && url.startsWith("blob:")));
+    if (hasBlob) {
+      alert("아직 사진이 브라우저에서 서버로 업로드 중입니다.\n사진이 완전히 보인 후 잠시만 기다리셨다가 다시 저장해 주세요.");
+      return;
+    }
+
     setIsSaving(true);
     try {
       const resolvedInvitationMessage =
@@ -1488,81 +1495,96 @@ export default function Builder() {
           <div id="control-album" className={`p-6 border-b border-zinc-100 transition-all ${selectedSection === "album" ? "bg-zinc-50" : "bg-white"}`} onClick={() => setSelectedSection("album")}>
             <div className="flex justify-between items-center mb-6">
               <label className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Gallery (Max 9)</label>
-              <button onClick={(e) => { e.stopPropagation(); document.getElementById("bulk-upload")?.click(); }} className="px-3 py-1.5 bg-zinc-900 text-white text-[10px] font-bold rounded-lg">BULK UPLOAD
+              <button onClick={(e) => { e.stopPropagation(); document.getElementById("bulk-upload")?.click(); }} className="px-3 py-1.5 bg-zinc-900 text-white text-[10px] font-bold rounded-lg">일괄 업로드
                 <input id="bulk-upload" type="file" multiple accept="image/*" className="hidden" onChange={async (e) => {
-                  const files = Array.from(e.target.files || []).slice(0, 9); if (!files.length) return;
+                  const files = Array.from(e.target.files || []).slice(0, 9);
+                  if (!files.length) return;
                   const filesArray = Array.from(files);
-                  const initialAlbumPhotos = normalizeAlbumPhotos(formData.albumPhotos);
-                  const filesToUpload = [];
-                  const newAlbumPhotos = [...initialAlbumPhotos];
 
-                  // First pass: create local previews and prepare for upload
-                  let currentEmptyIdx = 0;
-                  for (let i = 0; i < filesArray.length; i++) {
-                    const file = filesArray[i];
-                    const emptyIdx = newAlbumPhotos.findIndex((v, idx) => !v && idx >= currentEmptyIdx);
-                    if (emptyIdx === -1) break; // No more empty slots
-                    const localUrl = URL.createObjectURL(file);
-                    newAlbumPhotos[emptyIdx] = localUrl;
-                    filesToUpload.push({ file, index: emptyIdx, localUrl });
-                    currentEmptyIdx = emptyIdx + 1;
-                  }
-                  updateFormData({ albumPhotos: newAlbumPhotos });
+                  let filesToUpload = [];
+                  updateFormData((prev) => {
+                    const newAlbumPhotos = normalizeAlbumPhotos(prev.albumPhotos);
+                    let currentEmptyIdx = 0;
+                    for (let i = 0; i < filesArray.length; i++) {
+                      const file = filesArray[i];
+                      const emptyIdx = newAlbumPhotos.findIndex((v, idx) => !v && idx >= currentEmptyIdx);
+                      if (emptyIdx === -1) break;
+                      const localUrl = URL.createObjectURL(file);
+                      newAlbumPhotos[emptyIdx] = localUrl;
+                      filesToUpload.push({ file, index: emptyIdx, localUrl });
+                      currentEmptyIdx = emptyIdx + 1;
+                    }
+                    return { ...prev, albumPhotos: newAlbumPhotos };
+                  });
 
-                  // Second pass: upload files and replace local URLs with server URLs
+                  // Sequential pass: compress and upload one by one to prevent OOM
                   for (const { file, index, localUrl } of filesToUpload) {
-                    const compressed = await compressImage(file);
-                    const d = new FormData();
-                    d.append("file", compressed);
                     try {
+                      // Comporess sequentially to save memory
+                      const compressed = await compressImage(file);
+                      const d = new FormData();
+                      d.append("file", compressed);
+
                       const r = await api.post("/invitations/upload", d, { headers: { "Content-Type": "multipart/form-data" } });
-                      if (r.data.success && r.data.url) {
-                        // Get the latest state to ensure we're updating correctly
-                        updateFormData((prevFormData) => {
-                          const latestAlbumPhotos = normalizeAlbumPhotos(prevFormData.albumPhotos);
-                          // Only replace if the current item at 'index' is still the localUrl we set
-                          if (latestAlbumPhotos[index] === localUrl) {
-                            latestAlbumPhotos[index] = r.data.url;
-                            URL.revokeObjectURL(localUrl); // Clean up the blob URL
-                          }
-                          return { ...prevFormData, albumPhotos: latestAlbumPhotos };
-                        });
-                      } else {
-                        // If upload fails, revert to null or handle error
-                        updateFormData((prevFormData) => {
-                          const latestAlbumPhotos = normalizeAlbumPhotos(prevFormData.albumPhotos);
-                          if (latestAlbumPhotos[index] === localUrl) {
-                            latestAlbumPhotos[index] = null;
+
+                      if (r.data?.success && r.data?.url) {
+                        updateFormData((prev) => {
+                          const latest = normalizeAlbumPhotos(prev.albumPhotos);
+                          if (latest[index] === localUrl) {
+                            latest[index] = r.data.url;
                             URL.revokeObjectURL(localUrl);
                           }
-                          return { ...prevFormData, albumPhotos: latestAlbumPhotos };
+                          return { ...prev, albumPhotos: latest };
                         });
+                      } else {
+                        throw new Error(r.data?.error || "Upload failed");
                       }
-                    } catch {
-                      // If upload fails, revert to null or handle error
-                      updateFormData((prevFormData) => {
-                        const latestAlbumPhotos = normalizeAlbumPhotos(prevFormData.albumPhotos);
-                        if (latestAlbumPhotos[index] === localUrl) {
-                          latestAlbumPhotos[index] = null;
+                    } catch (err) {
+                      console.error("Bulk upload err at idx", index, err);
+                      // On failure, remove the preview
+                      updateFormData((prev) => {
+                        const latest = normalizeAlbumPhotos(prev.albumPhotos);
+                        if (latest[index] === localUrl) {
+                          latest[index] = null;
                           URL.revokeObjectURL(localUrl);
                         }
-                        return { ...prevFormData, albumPhotos: latestAlbumPhotos };
+                        return { ...prev, albumPhotos: latest };
                       });
                     }
                   }
+
+                  // Clear input value so it can trigger again
+                  if (e.target) e.target.value = "";
                 }} />
               </button>
             </div>
             <div className="mt-6 grid grid-cols-3 gap-2">
               {Array.from({ length: 9 }).map((_, i) => (
                 <div key={i} className="relative aspect-square bg-zinc-50 border border-zinc-100 rounded-xl overflow-hidden group">
-                  {formData.albumPhotos[i] ? (<><img src={toThumbnailUrl(formData.albumPhotos[i])} alt={`album-${i}`} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { if (e.currentTarget.dataset.fallback === "1") return; e.currentTarget.dataset.fallback = "1"; e.currentTarget.src = formData.albumPhotos[i]; }} /><button onClick={() => { const n = normalizeAlbumPhotos(formData.albumPhotos); const oldUrl = n[i]; n[i] = null; updateFormData({ albumPhotos: n }); if (oldUrl && oldUrl.startsWith('blob:')) URL.revokeObjectURL(oldUrl); }} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"><X size={10} /></button></>) : (
+                  {formData.albumPhotos[i] ? (<><img src={formData.albumPhotos[i]} alt={`album-${i}`} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { if (e.currentTarget.dataset.fallback === "1") return; e.currentTarget.dataset.fallback = "1"; e.currentTarget.src = formData.albumPhotos[i]; }} /><button onClick={() => { const n = normalizeAlbumPhotos(formData.albumPhotos); const oldUrl = n[i]; n[i] = null; updateFormData({ albumPhotos: n }); if (oldUrl && oldUrl.startsWith('blob:')) URL.revokeObjectURL(oldUrl); }} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"><X size={10} /></button></>) : (
                     <div className="absolute inset-0 flex items-center justify-center text-zinc-300"><Upload size={16} /><input type="file" accept="image/*" onChange={async (e) => {
                       const f = e.target.files?.[0]; if (!f) return;
                       const localUrl = URL.createObjectURL(f);
-                      const n = normalizeAlbumPhotos(formData.albumPhotos); n[i] = localUrl; updateFormData({ albumPhotos: n });
-                      const compressed = await compressImage(f); const d = new FormData(); d.append("file", compressed); try {
-                        const r = await api.post("/invitations/upload", d, { headers: { "Content-Type": "multipart/form-data" } }); if (r.data.success && r.data.url) { const latestN = normalizeAlbumPhotos(formData.albumPhotos); if (latestN[i] === localUrl) { latestN[i] = r.data.url; URL.revokeObjectURL(localUrl); } updateFormData({ albumPhotos: latestN }); } else { // If upload fails, revert to null
+                      updateFormData((prev) => {
+                        const n = normalizeAlbumPhotos(prev.albumPhotos);
+                        n[i] = localUrl;
+                        return { ...prev, albumPhotos: n };
+                      });
+                      const compressed = await compressImage(f);
+                      const d = new FormData();
+                      d.append("file", compressed);
+                      try {
+                        const r = await api.post("/invitations/upload", d, { headers: { "Content-Type": "multipart/form-data" } });
+                        if (r.data.success && r.data.url) {
+                          updateFormData((prevFormData) => {
+                            const latestN = normalizeAlbumPhotos(prevFormData.albumPhotos);
+                            if (latestN[i] === localUrl) {
+                              latestN[i] = r.data.url;
+                              URL.revokeObjectURL(localUrl);
+                            }
+                            return { ...prevFormData, albumPhotos: latestN };
+                          });
+                        } else {
                           updateFormData((prevFormData) => {
                             const latestN = normalizeAlbumPhotos(prevFormData.albumPhotos);
                             if (latestN[i] === localUrl) {
@@ -1572,7 +1594,7 @@ export default function Builder() {
                             return { ...prevFormData, albumPhotos: latestN };
                           });
                         }
-                      } catch { // If upload fails, revert to null
+                      } catch {
                         updateFormData((prevFormData) => {
                           const latestN = normalizeAlbumPhotos(prevFormData.albumPhotos);
                           if (latestN[i] === localUrl) {

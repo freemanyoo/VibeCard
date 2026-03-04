@@ -1526,6 +1526,7 @@ ${fontCatalogText}
                 <InvitationView
                   template={template}
                   isPreview={true}
+                  previewUseLivePhotoLayout={true}
                   showFormsInPreview={true}
                   onSelectSection={(id) => { setSelectedElement(id); const el = document.getElementById(`control-${id}`); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); }}
                   activeSection={selectedElement}

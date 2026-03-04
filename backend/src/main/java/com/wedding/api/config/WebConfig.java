@@ -24,8 +24,7 @@ public class WebConfig implements WebMvcConfigurer {
                         "http://localhost:3000",
                         "http://127.0.0.1:3000",
                         "http://100.*.*.*:3000",
-                        "https://macbookpro.tail3bef65.ts.net"
-                )
+                        "https://macbookpro.tail3bef65.ts.net")
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(true);
@@ -34,7 +33,7 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
         Path uploadPath = Paths.get(uploadDir).toAbsolutePath();
-        registry.addResourceHandler("/uploads/**")
+        registry.addResourceHandler("/uploads/**", "/api/uploads/**")
                 .addResourceLocations("file:" + uploadPath + "/")
                 .setCacheControl(CacheControl.maxAge(30, TimeUnit.DAYS).cachePublic().immutable());
     }
