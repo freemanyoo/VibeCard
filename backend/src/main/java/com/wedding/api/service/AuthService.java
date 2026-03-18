@@ -117,7 +117,7 @@ public class AuthService {
                 new AuthResponse.UserDto(user.getId(), user.getEmail(), role));
     }
 
-    public AuthResponse loginWithGoogleIdToken(String idToken) {
+    public AuthResponse loginWithGoogleIdToken(String idToken, String mode) {
         GoogleProfile profile = verifyGoogleIdToken(idToken);
         if (profile == null) {
             return AuthResponse.fail("구글 인증에 실패했습니다. 다시 시도해 주세요.");
@@ -125,10 +125,10 @@ public class AuthService {
         if (!profile.emailVerified()) {
             return AuthResponse.fail("이메일 인증이 완료된 구글 계정만 사용할 수 있습니다.");
         }
-        return upsertSocialUserAndLogin("google", profile.sub(), profile.email());
+        return upsertSocialUserAndLogin("google", profile.sub(), profile.email(), mode);
     }
 
-    public AuthResponse loginWithNaverCode(String code, String state, String redirectUri) {
+    public AuthResponse loginWithNaverCode(String code, String state, String redirectUri, String mode) {
         NaverVerifyResult verify = verifyNaverAuthorizationCode(code, state, redirectUri);
         if (!verify.success()) {
             return AuthResponse.fail(verify.error());
@@ -137,10 +137,10 @@ public class AuthService {
         if (profile.email() == null || profile.email().isBlank()) {
             return AuthResponse.fail("네이버 계정에서 이메일 제공 동의가 필요합니다.");
         }
-        return upsertSocialUserAndLogin("naver", profile.id(), profile.email());
+        return upsertSocialUserAndLogin("naver", profile.id(), profile.email(), mode);
     }
 
-    public AuthResponse loginWithKakaoCode(String code, String state, String redirectUri) {
+    public AuthResponse loginWithKakaoCode(String code, String state, String redirectUri, String mode) {
         KakaoVerifyResult verify = verifyKakaoAuthorizationCode(code, state, redirectUri);
         if (!verify.success()) {
             return AuthResponse.fail(verify.error());
@@ -149,10 +149,10 @@ public class AuthService {
         if (profile.email() == null || profile.email().isBlank()) {
             return AuthResponse.fail("카카오 계정에서 이메일 제공 동의가 필요합니다.");
         }
-        return upsertSocialUserAndLogin("kakao", profile.id(), profile.email());
+        return upsertSocialUserAndLogin("kakao", profile.id(), profile.email(), mode);
     }
 
-    private AuthResponse upsertSocialUserAndLogin(String provider, String providerId, String email) {
+    private AuthResponse upsertSocialUserAndLogin(String provider, String providerId, String email, String mode) {
         String normalizedEmail = normalizeEmail(email);
         if (normalizedEmail.isBlank()) {
             return AuthResponse.fail("소셜 계정 이메일 정보가 올바르지 않습니다.");
@@ -171,6 +171,9 @@ public class AuthService {
                         return AuthResponse.fail("이미 다른 소셜 계정으로 가입된 이메일입니다.");
                     }
                 } else {
+                    if (isSocialLoginMode(mode)) {
+                        return AuthResponse.fail("가입되지 않은 계정입니다. 먼저 회원가입해 주세요.");
+                    }
                     user = User.builder()
                             .email(normalizedEmail)
                             .password(passwordEncoder.encode(UUID.randomUUID().toString()))
@@ -206,6 +209,13 @@ public class AuthService {
             e.printStackTrace();
             return AuthResponse.fail("로그인 처리 중 서버 오류가 발생했습니다: " + e.getMessage());
         }
+    }
+
+    private boolean isSocialLoginMode(String mode) {
+        if (mode == null || mode.isBlank()) {
+            return true;
+        }
+        return !"signup".equalsIgnoreCase(mode.trim());
     }
 
     private GoogleProfile verifyGoogleIdToken(String idToken) {

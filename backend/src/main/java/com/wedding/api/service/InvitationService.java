@@ -45,13 +45,14 @@ public class InvitationService {
     private final AttendanceRepository attendanceRepository;
     private final UserRepository userRepository;
     private final MediaFileRepository mediaFileRepository;
+    private final SkinRepository skinRepository;
     private final ObjectStorageService objectStorageService;
 
     @Value("${upload.dir}")
     private String uploadDir;
 
     public List<Invitation> getMyInvitations(String userId) {
-        return invitationRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        return invitationRepository.findByUser_IdOrderByCreatedAtDesc(userId);
     }
 
     public Invitation getBySlug(String slug) {
@@ -105,8 +106,16 @@ public class InvitationService {
         inv.setMainPhotoFit(req.getMainPhotoFit() != null ? req.getMainPhotoFit() : "cover");
         inv.setMainPhotoPosition(req.getMainPhotoPosition() != null ? req.getMainPhotoPosition() : "50% 50%");
         inv.setTemplate(req.getTemplate() != null ? req.getTemplate() : "modern");
-        if (req.getSkinId() != null)
-            inv.setSkinId(req.getSkinId());
+        String requestedSkinId = req.getSkinId() != null ? req.getSkinId().trim() : "";
+        if (requestedSkinId.isBlank()) {
+            inv.setSkinId(null);
+            inv.setSkin(null);
+        } else {
+            Skin skin = skinRepository.findById(requestedSkinId)
+                    .orElseThrow(() -> new RuntimeException("선택한 스킨을 찾을 수 없습니다."));
+            inv.setSkinId(skin.getId());
+            inv.setSkin(skin);
+        }
         inv.setInvitationTitle(req.getInvitationTitle());
         inv.setInvitationMessage(req.getInvitationMessage());
         inv.setGroomFather(req.getGroomFather());
@@ -523,8 +532,10 @@ public class InvitationService {
     private MediaFile saveMediaFile(String userId, String mimeType, long fileSize, BufferedImage image,
             StoredAsset originalAsset,
             StoredAsset thumbnailAsset, StoredAsset analysisAsset, String storageMode) {
+        User user = userRepository.findById(userId).orElseThrow();
         MediaFile mediaFile = MediaFile.builder()
                 .userId(userId)
+                .user(user)
                 .storageMode(storageMode)
                 .originalBucket(originalAsset.bucket())
                 .originalObjectKey(originalAsset.objectKey())

@@ -49,8 +49,8 @@ export function AuthProvider({ children }) {
     await api.post("/auth/register", { email, password, verificationCode });
   };
 
-  const socialGoogleLogin = async (idToken) => {
-    const res = await api.post("/auth/social/google", { idToken });
+  const socialGoogleLogin = async (idToken, mode = "login") => {
+    const res = await api.post("/auth/social/google", { idToken, mode });
     const { token: newToken, refreshToken: newRefreshToken, user: newUser } = res.data;
     setToken(newToken);
     setUser(newUser);
@@ -62,13 +62,14 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const buildNaverAuthUrl = () => {
+  const buildNaverAuthUrl = (mode = "login") => {
     const clientId = import.meta.env.VITE_NAVER_CLIENT_ID || "";
     if (!clientId) throw new Error("네이버 로그인 설정이 필요합니다.");
     if (typeof window === "undefined") throw new Error("브라우저 환경이 아닙니다.");
     const redirectUri = `${window.location.origin}/auth/naver/callback`;
     const state = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     sessionStorage.setItem("naver_oauth_state", state);
+    sessionStorage.setItem("naver_oauth_mode", mode);
     const params = new URLSearchParams({
       response_type: "code",
       client_id: clientId,
@@ -78,14 +79,15 @@ export function AuthProvider({ children }) {
     return `https://nid.naver.com/oauth2.0/authorize?${params.toString()}`;
   };
 
-  const socialNaverLogin = async (code, state) => {
+  const socialNaverLogin = async (code, state, mode) => {
     if (typeof window === "undefined") throw new Error("브라우저 환경이 아닙니다.");
     const expectedState = sessionStorage.getItem("naver_oauth_state");
     if (!state || !expectedState || state !== expectedState) {
       throw new Error("네이버 인증 state 검증에 실패했습니다. 다시 시도해 주세요.");
     }
     const redirectUri = `${window.location.origin}/auth/naver/callback`;
-    const res = await api.post("/auth/social/naver", { code, state, redirectUri });
+    const resolvedMode = mode || sessionStorage.getItem("naver_oauth_mode") || "login";
+    const res = await api.post("/auth/social/naver", { code, state, redirectUri, mode: resolvedMode });
     const { token: newToken, refreshToken: newRefreshToken, user: newUser } = res.data;
     setToken(newToken);
     setUser(newUser);
@@ -93,15 +95,17 @@ export function AuthProvider({ children }) {
     localStorage.setItem("refreshToken", newRefreshToken);
     localStorage.setItem("user", JSON.stringify(newUser));
     sessionStorage.removeItem("naver_oauth_state");
+    sessionStorage.removeItem("naver_oauth_mode");
   };
 
-  const buildKakaoAuthUrl = () => {
+  const buildKakaoAuthUrl = (mode = "login") => {
     const clientId = import.meta.env.VITE_KAKAO_REST_API_KEY || "";
     if (!clientId) throw new Error("카카오 로그인 설정이 필요합니다.");
     if (typeof window === "undefined") throw new Error("브라우저 환경이 아닙니다.");
     const redirectUri = `${window.location.origin}/auth/kakao/callback`;
     const state = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     sessionStorage.setItem("kakao_oauth_state", state);
+    sessionStorage.setItem("kakao_oauth_mode", mode);
     const params = new URLSearchParams({
       response_type: "code",
       client_id: clientId,
@@ -111,14 +115,15 @@ export function AuthProvider({ children }) {
     return `https://kauth.kakao.com/oauth/authorize?${params.toString()}`;
   };
 
-  const socialKakaoLogin = async (code, state) => {
+  const socialKakaoLogin = async (code, state, mode) => {
     if (typeof window === "undefined") throw new Error("브라우저 환경이 아닙니다.");
     const expectedState = sessionStorage.getItem("kakao_oauth_state");
     if (!state || !expectedState || state !== expectedState) {
       throw new Error("카카오 인증 state 검증에 실패했습니다. 다시 시도해 주세요.");
     }
     const redirectUri = `${window.location.origin}/auth/kakao/callback`;
-    const res = await api.post("/auth/social/kakao", { code, state, redirectUri });
+    const resolvedMode = mode || sessionStorage.getItem("kakao_oauth_mode") || "login";
+    const res = await api.post("/auth/social/kakao", { code, state, redirectUri, mode: resolvedMode });
     const { token: newToken, refreshToken: newRefreshToken, user: newUser } = res.data;
     setToken(newToken);
     setUser(newUser);
@@ -126,6 +131,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem("refreshToken", newRefreshToken);
     localStorage.setItem("user", JSON.stringify(newUser));
     sessionStorage.removeItem("kakao_oauth_state");
+    sessionStorage.removeItem("kakao_oauth_mode");
   };
 
   const logout = () => {

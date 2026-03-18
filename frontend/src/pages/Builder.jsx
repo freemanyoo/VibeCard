@@ -369,6 +369,13 @@ export default function Builder() {
   const handleSectionSelect = (id) => { setSelectedSection(id); const el = document.getElementById(`control-${id}`); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); };
   const [config, setConfig] = useState(() => ({ ...defaultFullConfig }));
   const updateConfig = (updates) => setConfig((prev) => ({ ...prev, ...updates }));
+  const hasExplicitHeroColorConfig = (source) => {
+    if (!source || typeof source !== "object") return false;
+    return HERO_TEXT_COLOR_ITEMS.some((item) => {
+      const value = source[item.key];
+      return typeof value === "string" && value.trim() !== "";
+    });
+  };
   const scheduleColorConfigUpdate = (updates) => {
     const hasHeroColorUpdate = Object.keys(updates || {}).some((k) => HERO_TEXT_COLOR_KEYS.has(k));
     const nextUpdates = hasHeroColorUpdate ? { ...updates, heroTextColorMode: "custom" } : updates;
@@ -501,7 +508,15 @@ export default function Builder() {
       const raw = skin.config;
       const parsed = typeof raw === "string" ? JSON.parse(raw || "{}") : (raw || {});
       const fallback = skinDefaultsBySlug[skin.slug];
-      const merged = { ...defaultFullConfig, ...(fallback || {}), ...parsed, theme: skin.slug };
+      const shouldUseCustomHeroText =
+        String(parsed.heroTextColorMode || "").toLowerCase() === "custom" || hasExplicitHeroColorConfig(parsed);
+      const merged = {
+        ...defaultFullConfig,
+        ...(fallback || {}),
+        ...parsed,
+        ...(shouldUseCustomHeroText ? { heroTextColorMode: "custom" } : {}),
+        theme: skin.slug,
+      };
       if (!merged.bgColor && fallback) merged.bgColor = fallback.bgColor;
       if (!merged.subBgColor && fallback) merged.subBgColor = fallback.subBgColor;
       setConfig(merged);
@@ -948,12 +963,19 @@ export default function Builder() {
     const effectiveModelAlias = isAdminUser ? aiInvitationModelAlias : "openclaw1";
     const selectedModelLabel = AI_INVITATION_MODEL_OPTIONS.find((item) => item.value === effectiveModelAlias)?.label || "OpenAI";
     const historyLabel = `명령어 기반 · ${selectedModelLabel} · ${trimmed}`;
+    let aiPhotoInput = aiInvitationPhotoUrl;
+    try {
+      aiPhotoInput = new URL(String(aiInvitationAnalysisImageUrl || aiInvitationPhotoUrl || ""), window.location.origin).toString();
+    } catch {
+      aiPhotoInput = aiInvitationAnalysisImageUrl || aiInvitationPhotoUrl || null;
+    }
     setIsAiInvitationGenerating(true);
     try {
       const res = await api.post("/invitations/ai-generate-from-prompt", {
-        sourceImageId: aiInvitationSourceImageId || null,
         prompt: trimmed,
-        analysisImageUrl: aiInvitationAnalysisImageUrl || aiInvitationPhotoUrl || null,
+        sourceImageId: aiInvitationSourceImageId || null,
+        analysisImageUrl: aiPhotoInput,
+        photoUrl: aiInvitationPhotoUrl || null,
         imageStyle: aiInvitationImageStyle,
         modelAlias: effectiveModelAlias,
       });
@@ -1958,14 +1980,6 @@ export default function Builder() {
                           disableMainPhotoOverlay={String(aiInvitationImageStyle || "standard") !== "full"}
                           forceFullImageDarken
                         />
-                        {!aiInvitationPreviewData.mainPhotoUrl && (
-                          <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-                            <div className="rounded-2xl border-2 border-zinc-300 bg-white/98 px-5 py-4 text-center text-zinc-700 shadow-lg">
-                              <Upload size={22} className="mx-auto mb-2" />
-                              <span className="text-[10px] font-bold">사진을 업로드해 주세요</span>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </MobileFrame>
                   </div>
@@ -2041,6 +2055,8 @@ export default function Builder() {
                         className="w-full min-h-[132px] rounded-2xl border border-zinc-200 p-4 text-sm resize-none"
                         placeholder="예: 따뜻한 크림톤, 잔잔한 꽃무늬, 단정한 예식장 분위기의 청첩장 문구와 구성을 만들어줘"
                       />
+                      <p className="text-[11px] text-zinc-400">폰트는 AI가 스킨디자인과 같은 무료 폰트 목록 안에서 자동 선택합니다.</p>
+                      <p className="text-[11px] text-zinc-400">사진을 업로드해 두면 명령어 기반 생성에서도 참고 이미지로 함께 사용합니다.</p>
                     </div>
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">

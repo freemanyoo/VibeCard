@@ -45,6 +45,7 @@ public class Invitation {
     @Builder.Default
     private String template = "modern";
 
+    @Column(name = "skin_id")
     private String skinId;
     private String invitationTitle;
 
@@ -96,6 +97,11 @@ public class Invitation {
     @JoinColumn(name = "user_id", nullable = false)
     @JsonIgnore
     private User user;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "skin_id", insertable = false, updatable = false)
+    @JsonIgnore
+    private Skin skin;
 
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();

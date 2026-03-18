@@ -426,11 +426,11 @@ export default function InvitationView({ data, template, isPreview = false, comp
     classic: { bg: "#faf6f1", sub: "#f5efe6", text: "#4a4035", point: "#8b6914" },
     elegant: { bg: "#1a1a1a", sub: "#252525", text: "#fafafa", point: "#d4af37" },
   };
-  const t = templateDefaults[template] || templateDefaults.modern;
-  const bgColor = config.bgColor || t.bg;
-  const subBgColor = config.subBgColor || t.sub;
-  const textColor = config.textColor || t.text;
-  const pointColor = config.pointColor || t.point;
+  const themeDefaults = templateDefaults[template] || templateDefaults.modern;
+  const bgColor = config.bgColor || themeDefaults.bg;
+  const subBgColor = config.subBgColor || themeDefaults.sub;
+  const textColor = config.textColor || themeDefaults.text;
+  const pointColor = config.pointColor || themeDefaults.point;
   const fontFamily = config.fontFamily || (template === "modern" ? "'Noto Sans KR', sans-serif" : template === "classic" ? "'Nanum Myeongjo', serif" : template === "elegant" ? "'Noto Serif KR', serif" : "serif");
   const isModern = template === "modern";
   const isClassic = template === "classic";
@@ -510,7 +510,17 @@ export default function InvitationView({ data, template, isPreview = false, comp
   const s = (n) => {
     const val = typeof n === "string" ? parseFloat(n) : Number(n);
     if (!Number.isFinite(val)) return 0;
+    return Math.round(val * viewScale * 10) / 10;
+  };
+  const t = (n) => {
+    const val = typeof n === "string" ? parseFloat(n) : Number(n);
+    if (!Number.isFinite(val)) return 0;
     return Math.round(val * textScale * viewScale * 10) / 10;
+  };
+  const ht = (n) => {
+    const val = typeof n === "string" ? parseFloat(n) : Number(n);
+    if (!Number.isFinite(val)) return 0;
+    return Math.round(val * viewScale * 10) / 10;
   };
   const pickSize = (e, key) => {
     if (!isPreview || typeof onTextSizePick !== "function") return;
@@ -577,7 +587,16 @@ export default function InvitationView({ data, template, isPreview = false, comp
   const shouldAutoContrastNoPhotoFull = isPreview && autoContrastHeroTextWhenNoPhotoFull && imageStyle === "full" && !photoUrl;
   const noPhotoFullTextColor = isDarkBackground(bgColor) ? "#FFFFFF" : "#111111";
   const heroTextColorMode = String(config.heroTextColorMode || "auto").toLowerCase();
-  const useWhiteHeroText = isFullImage && heroTextColorMode !== "custom";
+  const hasExplicitHeroColorConfig = [
+    config.pointColor,
+    config.saveTheDateColor,
+    config.titleColor,
+    config.nameColor,
+    config.dateColor,
+    config.heroVenueColor,
+    config.heroDdayColor,
+  ].some((value) => typeof value === "string" && value.trim() !== "");
+  const useWhiteHeroText = isFullImage && heroTextColorMode !== "custom" && !hasExplicitHeroColorConfig;
   const saveTheDateBaseColor = config.saveTheDateColor || pointColor;
   const heroVenueBaseColor = config.heroVenueColor || textColor;
   const heroDdayBaseColor = config.heroDdayColor || buttonColor;
@@ -844,6 +863,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
       standardPhotoFrameSize.height * Math.max(0, 100 - (standardImageRect.top + standardImageRect.height)) / 100,
     ),
   );
+  const shouldCollapseStandardPhotoSlack = !isFullImage;
   const shouldUseStandardPhotoInnerZoom = data.mainPhotoFit === "cover" && mainPhotoZoom > 100;
   const useDynamicFullPreviewSelectionBox = isPreview && previewUseLivePhotoLayout;
   const radiusPreset = isModern
@@ -1085,7 +1105,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
     const ro = new ResizeObserver(recalcHeroNames);
     if (heroNamesWrapRef.current) ro.observe(heroNamesWrapRef.current);
     return () => ro.disconnect();
-  }, [groomDisplayName, brideDisplayName, namesSize, textScale]);
+  }, [groomDisplayName, brideDisplayName, namesSize]);
 
   useEffect(() => {
     const measureParentWrap = (buttonRef, relationRef, nameRef, phoneRef, measureRef, setter) => {
@@ -1115,7 +1135,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
     if (groomFamilyButtonRef.current) ro.observe(groomFamilyButtonRef.current);
     if (brideFamilyButtonRef.current) ro.observe(brideFamilyButtonRef.current);
     return () => ro.disconnect();
-  }, [familyLineSize, familyRelationSize, groomParentLineText, brideParentLineText, groomDisplayName, brideDisplayName, textScale]);
+  }, [familyLineSize, familyRelationSize, groomParentLineText, brideParentLineText, groomDisplayName, brideDisplayName]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return undefined;
@@ -1217,13 +1237,35 @@ export default function InvitationView({ data, template, isPreview = false, comp
 
         <div className="inv-title-wrap relative z-20 w-full flex flex-col items-center justify-center text-center" style={{ paddingLeft: s(24), paddingRight: s(24), marginBottom: isFullImage ? s(32) : 0 }}>
           <p data-text-pick="1" onClick={(e) => pickSize(e, "saveTheDateSize")} className="inv-subtitle w-full" style={{ color: heroSaveDateColor, marginBottom: s(16), ...pickableStyle }}>
-            {isModern && <span data-text-pick="1" onClick={(e) => pickSize(e, "saveTheDateSize")} className="font-black uppercase tracking-[0.6em]" style={{ fontSize: `${s(saveTheDateSize)}px`, whiteSpace: "pre-line", ...heroSaveDateReadabilityStyle }}>{saveTheDateText}</span>}
-            {isClassic && <span data-text-pick="1" onClick={(e) => pickSize(e, "saveTheDateSize")} className="font-black uppercase tracking-[0.5em]" style={{ fontSize: `${s(saveTheDateSize)}px`, whiteSpace: "pre-line", ...heroSaveDateReadabilityStyle }}>{saveTheDateText}</span>}
-            {!isModern && !isClassic && <span data-text-pick="1" onClick={(e) => pickSize(e, "saveTheDateSize")} className="font-black uppercase tracking-[0.5em]" style={{ fontSize: `${s(saveTheDateSize)}px`, whiteSpace: "pre-line", ...heroSaveDateReadabilityStyle }}>{saveTheDateText}</span>}
+            {isModern && <span data-text-pick="1" onClick={(e) => pickSize(e, "saveTheDateSize")} className="font-black uppercase tracking-[0.6em]" style={{ fontSize: `${t(saveTheDateSize)}px`, whiteSpace: "pre-line", ...heroSaveDateReadabilityStyle }}>{saveTheDateText}</span>}
+            {isClassic && <span data-text-pick="1" onClick={(e) => pickSize(e, "saveTheDateSize")} className="font-black uppercase tracking-[0.5em]" style={{ fontSize: `${t(saveTheDateSize)}px`, whiteSpace: "pre-line", ...heroSaveDateReadabilityStyle }}>{saveTheDateText}</span>}
+            {!isModern && !isClassic && <span data-text-pick="1" onClick={(e) => pickSize(e, "saveTheDateSize")} className="font-black uppercase tracking-[0.5em]" style={{ fontSize: `${t(saveTheDateSize)}px`, whiteSpace: "pre-line", ...heroSaveDateReadabilityStyle }}>{saveTheDateText}</span>}
           </p>
-          <h1 data-text-pick="1" onClick={(e) => pickSize(e, "titleSize")} className={`inv-title leading-tight w-full max-w-full ${isModern ? "font-extralight tracking-[0.35em]" : isClassic ? "font-medium tracking-[0.15em]" : "font-extralight tracking-widest"}`} style={{ fontSize: `${s(titleSize)}px`, color: heroTitleColor, whiteSpace: "pre-line", textAlign: "center", ...heroTitleReadabilityStyle, ...pickableStyle }}>{mainTitleText}</h1>
+          <h1 data-text-pick="1" onClick={(e) => pickSize(e, "titleSize")} className={`inv-title leading-tight w-full max-w-full ${isModern ? "font-extralight tracking-[0.35em]" : isClassic ? "font-medium tracking-[0.15em]" : "font-extralight tracking-widest"}`} style={{ fontSize: `${ht(titleSize)}px`, color: heroTitleColor, whiteSpace: "pre-line", textAlign: "center", ...heroTitleReadabilityStyle, ...pickableStyle }}>{mainTitleText}</h1>
         </div>
 
+        <div className={`inv-hero-info space-y-8 sm:space-y-10 relative z-20 ${isFullImage ? "px-6 sm:px-10 w-full" : ""}`}>
+          <div
+            ref={heroNamesWrapRef}
+            data-text-pick="1"
+            onClick={(e) => pickSize(e, "namesSize")}
+            className="inv-names flex flex-nowrap items-center justify-center gap-4 sm:gap-10 font-extralight tracking-[0.2em] min-w-0"
+            style={{
+              fontSize: `clamp(16px, min(${ht(namesSize)}px, 8vw), ${ht(namesSize)}px)`,
+              color: heroNamesColor,
+              ...heroNamesReadabilityStyle,
+              ...pickableStyle,
+            }}
+          >
+            <span ref={heroGroomNameRef} className="flex-shrink-0" style={{ whiteSpace: stackGroomChars ? "pre-line" : "nowrap" }}>{groomDisplayText}</span>
+            <span
+              ref={heroDividerRef}
+              className="flex-shrink-0 opacity-30 bg-current w-[1px] h-8 sm:h-10"
+            />
+            <span ref={heroBrideNameRef} className="flex-shrink-0" style={{ whiteSpace: stackBrideChars ? "pre-line" : "nowrap" }}>{brideDisplayText}</span>
+            <span ref={heroGroomMeasureRef} className="absolute pointer-events-none opacity-0 -z-10 whitespace-nowrap" style={{ fontSize: `clamp(16px, min(${ht(namesSize)}px, 8vw), ${ht(namesSize)}px)` }}>{String(groomDisplayName || "").replace(/\n/g, "")}</span>
+            <span ref={heroBrideMeasureRef} className="absolute pointer-events-none opacity-0 -z-10 whitespace-nowrap" style={{ fontSize: `clamp(16px, min(${ht(namesSize)}px, 8vw), ${ht(namesSize)}px)` }}>{String(brideDisplayName || "").replace(/\n/g, "")}</span>
+          </div>
         {!isFullImage && photoUrl && (
           <div
             className="flex justify-center"
@@ -1248,7 +1290,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
               style={{
                 width: `${standardPhotoFrameSize.width}px`,
                 height: `${standardPhotoFrameSize.height}px`,
-                marginBottom: isPreview ? `${-standardBottomSlackPx}px` : undefined,
+                marginBottom: shouldCollapseStandardPhotoSlack ? `${-standardBottomSlackPx}px` : undefined,
                 backgroundColor: data.mainPhotoFit === "cover" ? "transparent" : subBgColor,
                 borderRadius: standardPhotoRadiusValue,
                 ...(isPreview && data.mainPhotoFit === "cover" ? { cursor: "grab" } : {}),
@@ -1354,46 +1396,24 @@ export default function InvitationView({ data, template, isPreview = false, comp
             </div>
           </div>
         )}
-
-        <div className={`inv-hero-info relative z-20 ${isFullImage ? "w-full" : ""}`} style={{ paddingLeft: s(24), paddingRight: s(24), display: 'flex', flexDirection: 'column', gap: s(32) }}>
-          <div
-            ref={heroNamesWrapRef}
-            data-text-pick="1"
-            onClick={(e) => pickSize(e, "namesSize")}
-            className="inv-names flex flex-nowrap items-center justify-center font-extralight tracking-[0.2em] min-w-0"
-            style={{
-              fontSize: `clamp(16px, min(${s(namesSize)}px, 8vw), ${s(namesSize)}px)`,
-              color: heroNamesColor,
-              gap: s(24),
-              ...heroNamesReadabilityStyle,
-              ...pickableStyle,
-            }}
-          >
-            <span ref={heroGroomNameRef} className="flex-shrink-0" style={{ whiteSpace: stackGroomChars ? "pre-line" : "nowrap" }}>{groomDisplayText}</span>
-            <span
-              ref={heroDividerRef}
-              className="flex-shrink-0 opacity-30 bg-current w-[1px]"
-              style={{ height: s(36) }}
-            />
-            <span ref={heroBrideNameRef} className="flex-shrink-0" style={{ whiteSpace: stackBrideChars ? "pre-line" : "nowrap" }}>{brideDisplayText}</span>
-            <span ref={heroGroomMeasureRef} className="absolute pointer-events-none opacity-0 -z-10 whitespace-nowrap" style={{ fontSize: `clamp(16px, min(${s(namesSize)}px, 8vw), ${s(namesSize)}px)` }}>{String(groomDisplayName || "").replace(/\n/g, "")}</span>
-            <span ref={heroBrideMeasureRef} className="absolute pointer-events-none opacity-0 -z-10 whitespace-nowrap" style={{ fontSize: `clamp(16px, min(${s(namesSize)}px, 8vw), ${s(namesSize)}px)` }}>{String(brideDisplayName || "").replace(/\n/g, "")}</span>
-          </div>
-          <div className="inv-date" style={{ color: heroDateColor, display: 'flex', flexDirection: 'column', gap: s(12), ...heroDateReadabilityStyle }}>
+          <div className="inv-date relative z-20 space-y-3 text-center" style={{ color: heroDateColor, ...heroDateReadabilityStyle }}>
             <p className="tracking-[0.1em]">
-              <span data-text-pick="1" data-pick-group="hero-date-time" onClick={(e) => pickSize(e, "dateSize")} style={{ fontSize: `${s(dateSize)}px`, ...pickableStyle }}>{heroDateText}</span>
-              <span style={{ marginLeft: s(4), marginRight: s(4) }}> </span>
-              <span data-text-pick="1" data-pick-group="hero-date-time" onClick={(e) => pickSize(e, "dateSize")} style={{ fontSize: `${s(heroWeekdaySize)}px`, ...pickableStyle }}>{heroWeekdayText}</span>
+              <span data-text-pick="1" data-pick-group="hero-date-time" onClick={(e) => pickSize(e, "dateSize")} style={{ fontSize: `${t(dateSize)}px`, ...pickableStyle }}>{heroDateText}</span>
+              <span className="mx-1"> </span>
+              <span data-text-pick="1" data-pick-group="hero-date-time" onClick={(e) => pickSize(e, "dateSize")} style={{ fontSize: `${t(heroWeekdaySize)}px`, ...pickableStyle }}>{heroWeekdayText}</span>
             </p>
-            <p data-text-pick="1" data-pick-group="hero-date-time" onClick={(e) => pickSize(e, "dateSize")} className="font-medium tracking-widest" style={{ fontSize: `${s(heroTimeSize)}px`, ...pickableStyle }}>{weddingDate.toLocaleTimeString("ko-KR", { hour: "numeric", minute: "numeric", hour12: true })}</p>
+            <p data-text-pick="1" data-pick-group="hero-date-time" onClick={(e) => pickSize(e, "dateSize")} className="font-medium tracking-widest" style={{ fontSize: `${t(heroTimeSize)}px`, ...pickableStyle }}>{weddingDate.toLocaleTimeString("ko-KR", { hour: "numeric", minute: "numeric", hour12: true })}</p>
           </div>
-          <div className="inv-venue" style={{ paddingTop: s(16), display: 'flex', flexDirection: 'column', gap: s(16) }}>
-            <p data-text-pick="1" onClick={(e) => pickSize(e, "heroVenueNameSize")} className="tracking-[0.2em] font-light" style={{ color: heroVenueColor, fontSize: `${s(heroVenueNameSize)}px`, whiteSpace: "pre-line", ...heroVenueReadabilityStyle, ...pickableStyle }}>{venueDisplayName}</p>
+          <div className="inv-venue relative z-20 pt-4 space-y-4 text-center">
+            <p data-text-pick="1" onClick={(e) => pickSize(e, "heroVenueNameSize")} className="tracking-[0.2em] font-light" style={{ color: heroVenueColor, fontSize: `${ht(heroVenueNameSize)}px`, whiteSpace: "pre-line", ...heroVenueReadabilityStyle, ...pickableStyle }}>{venueDisplayName}</p>
             {dDayEnabled && (
-              <div><span data-text-pick="1" onClick={(e) => pickSize(e, "heroDDaySize")} className="inv-dday rounded-full border font-black tracking-widest uppercase border-current" style={{ borderColor: heroDdayColor, color: heroDdayColor, fontSize: `${s(heroDDaySize)}px`, padding: `${s(8)}px ${s(24)}px`, ...heroDdayReadabilityStyle, ...pickableStyle }}>{dDayText}</span></div>
+              <div><span data-text-pick="1" onClick={(e) => pickSize(e, "heroDDaySize")} className="inv-dday px-6 py-2 rounded-full border font-black tracking-widest uppercase border-current" style={{ borderColor: heroDdayColor, color: heroDdayColor, fontSize: `${ht(heroDDaySize)}px`, ...heroDdayReadabilityStyle, ...pickableStyle }}>{dDayText}</span></div>
             )}
           </div>
         </div>
+
+
+
       </InteractiveSection>
 
       {/* ===== MESSAGE SECTION ===== */}
@@ -1402,42 +1422,42 @@ export default function InvitationView({ data, template, isPreview = false, comp
           <div className="text-center" style={{ display: 'flex', flexDirection: 'column', gap: s(40) }}>
             <div className="flex items-center justify-center" style={{ gap: s(16), marginBottom: s(24) }}>
               <div className={dividerLine} style={{ color: pointColor }} />
-              <h2 data-text-pick="1" onClick={(e) => pickSize(e, "galleryTitleSize")} className={`inv-section-title ${sectionTitleClass}`} style={{ color: sectionTitleColor, fontSize: `${s(galleryTitleSize)}px`, ...pickableStyle }}>{isClassic ? "초대의 말씀" : "Invitation"}</h2>
+              <h2 data-text-pick="1" onClick={(e) => pickSize(e, "galleryTitleSize")} className={`inv-section-title ${sectionTitleClass}`} style={{ color: sectionTitleColor, fontSize: `${t(galleryTitleSize)}px`, ...pickableStyle }}>{isClassic ? "초대의 말씀" : "Invitation"}</h2>
               <div className={dividerLine} style={{ color: pointColor }} />
             </div>
-            <p data-text-pick="1" onClick={(e) => pickSize(e, "contentSize")} className="inv-message-text leading-[1.8] whitespace-pre-wrap font-light opacity-80 mx-auto" style={{ fontSize: `${s(contentSize)}px`, color: messageColor, maxWidth: s(340), ...pickableStyle }}>{invitationBodyText}</p>
+            <p data-text-pick="1" onClick={(e) => pickSize(e, "contentSize")} className="inv-message-text leading-[1.8] whitespace-pre-wrap font-light opacity-80 mx-auto" style={{ fontSize: `${ht(contentSize)}px`, color: messageColor, maxWidth: s(340), ...pickableStyle }}>{invitationBodyText}</p>
             {(data.groomFather || data.brideFather) && (
               <div style={{ paddingTop: s(32), display: 'flex', flexDirection: 'column', gap: s(24) }}>
                 <div className="inv-family flex flex-col items-center font-light opacity-60" style={{ gap: s(24) }}>
                   <button ref={groomFamilyButtonRef} onClick={(e) => { e.stopPropagation(); if (!isPreview) setShowContacts(true); }} className="flex flex-wrap items-center justify-center hover:opacity-100 transition-all group text-left w-full max-w-full" style={{ gap: s(12) }}>
-                    <span data-text-pick="1" data-pick-group="family-intro" onClick={(e) => pickSize(e, "familyLineSize")} className={splitGroomParents ? "flex flex-col items-center leading-tight" : "leading-tight"} style={{ fontSize: `${s(familyLineSize)}px`, ...pickableStyle }}>
+                    <span data-text-pick="1" data-pick-group="family-intro" onClick={(e) => pickSize(e, "familyLineSize")} className={splitGroomParents ? "flex flex-col items-center leading-tight" : "leading-tight"} style={{ fontSize: `${ht(familyLineSize)}px`, ...pickableStyle }}>
                       {splitGroomParents
                         ? (groomParentNames.length ? groomParentNames : [groomParentLineText]).map((name, idx) => (
                           <span key={`groom-parent-${idx}`} style={{ whiteSpace: "pre-line" }}>{name}</span>
                         ))
                         : <span style={{ whiteSpace: "pre-line" }}>{groomParentLineText}</span>}
                     </span>
-                    <span ref={groomFamilyRelationRef} data-text-pick="1" data-pick-group="family-intro" onClick={(e) => pickSize(e, "familyLineSize")} className="opacity-50 flex-shrink-0" style={{ fontSize: `${s(familyRelationSize)}px`, whiteSpace: "pre-line", ...pickableStyle }}>의 {groomRelationText}</span>
-                    <span ref={groomFamilyNameRef} data-text-pick="1" data-pick-group="family-intro" onClick={(e) => pickSize(e, "familyLineSize")} className="font-normal flex-shrink-0" style={{ fontSize: `${s(familyLineSize)}px`, whiteSpace: "pre-line", ...pickableStyle }}>{groomDisplayName}</span>
+                    <span ref={groomFamilyRelationRef} data-text-pick="1" data-pick-group="family-intro" onClick={(e) => pickSize(e, "familyLineSize")} className="opacity-50 flex-shrink-0" style={{ fontSize: `${ht(familyRelationSize)}px`, whiteSpace: "pre-line", ...pickableStyle }}>의 {groomRelationText}</span>
+                    <span ref={groomFamilyNameRef} data-text-pick="1" data-pick-group="family-intro" onClick={(e) => pickSize(e, "familyLineSize")} className="font-normal flex-shrink-0" style={{ fontSize: `${ht(familyLineSize)}px`, whiteSpace: "pre-line", ...pickableStyle }}>{groomDisplayName}</span>
                     <span ref={groomFamilyPhoneRef} className="flex-shrink-0">
                       <Phone size={s(14)} className="text-blue-500 opacity-40 group-hover:opacity-100" />
                     </span>
-                    <span ref={groomFamilyMeasureRef} className="absolute pointer-events-none opacity-0 -z-10 whitespace-nowrap" style={{ fontSize: `${s(familyLineSize)}px` }}>{groomParentLineText}</span>
+                    <span ref={groomFamilyMeasureRef} className="absolute pointer-events-none opacity-0 -z-10 whitespace-nowrap" style={{ fontSize: `${ht(familyLineSize)}px` }}>{groomParentLineText}</span>
                   </button>
                   <button ref={brideFamilyButtonRef} onClick={(e) => { e.stopPropagation(); if (!isPreview) setShowContacts(true); }} className="flex flex-wrap items-center justify-center hover:opacity-100 transition-all group text-left w-full max-w-full" style={{ gap: s(12) }}>
-                    <span data-text-pick="1" data-pick-group="family-intro" onClick={(e) => pickSize(e, "familyLineSize")} className={splitBrideParents ? "flex flex-col items-center leading-tight" : "leading-tight"} style={{ fontSize: `${s(familyLineSize)}px`, ...pickableStyle }}>
+                    <span data-text-pick="1" data-pick-group="family-intro" onClick={(e) => pickSize(e, "familyLineSize")} className={splitBrideParents ? "flex flex-col items-center leading-tight" : "leading-tight"} style={{ fontSize: `${ht(familyLineSize)}px`, ...pickableStyle }}>
                       {splitBrideParents
                         ? (brideParentNames.length ? brideParentNames : [brideParentLineText]).map((name, idx) => (
                           <span key={`bride-parent-${idx}`} style={{ whiteSpace: "pre-line" }}>{name}</span>
                         ))
                         : <span style={{ whiteSpace: "pre-line" }}>{brideParentLineText}</span>}
                     </span>
-                    <span ref={brideFamilyRelationRef} data-text-pick="1" data-pick-group="family-intro" onClick={(e) => pickSize(e, "familyLineSize")} className="opacity-50 flex-shrink-0" style={{ fontSize: `${s(familyRelationSize)}px`, whiteSpace: "pre-line", ...pickableStyle }}>의 {brideRelationText}</span>
-                    <span ref={brideFamilyNameRef} data-text-pick="1" data-pick-group="family-intro" onClick={(e) => pickSize(e, "familyLineSize")} className="font-normal flex-shrink-0" style={{ fontSize: `${s(familyLineSize)}px`, whiteSpace: "pre-line", ...pickableStyle }}>{brideDisplayName}</span>
+                    <span ref={brideFamilyRelationRef} data-text-pick="1" data-pick-group="family-intro" onClick={(e) => pickSize(e, "familyLineSize")} className="opacity-50 flex-shrink-0" style={{ fontSize: `${ht(familyRelationSize)}px`, whiteSpace: "pre-line", ...pickableStyle }}>의 {brideRelationText}</span>
+                    <span ref={brideFamilyNameRef} data-text-pick="1" data-pick-group="family-intro" onClick={(e) => pickSize(e, "familyLineSize")} className="font-normal flex-shrink-0" style={{ fontSize: `${ht(familyLineSize)}px`, whiteSpace: "pre-line", ...pickableStyle }}>{brideDisplayName}</span>
                     <span ref={brideFamilyPhoneRef} className="flex-shrink-0">
                       <Phone size={s(14)} className="text-pink-500 opacity-40 group-hover:opacity-100" />
                     </span>
-                    <span ref={brideFamilyMeasureRef} className="absolute pointer-events-none opacity-0 -z-10 whitespace-nowrap" style={{ fontSize: `${s(familyLineSize)}px` }}>{brideParentLineText}</span>
+                    <span ref={brideFamilyMeasureRef} className="absolute pointer-events-none opacity-0 -z-10 whitespace-nowrap" style={{ fontSize: `${ht(familyLineSize)}px` }}>{brideParentLineText}</span>
                   </button>
                 </div>
               </div>
@@ -1450,8 +1470,8 @@ export default function InvitationView({ data, template, isPreview = false, comp
       <InteractiveSection id="info" dataSection="calendar" className={`inv-calendar ${isModern ? "" : isClassic ? "" : ""}`} style={{ paddingTop: s(64), paddingBottom: s(64), paddingLeft: s(20), paddingRight: s(20) }} isPreview={isPreview} onSelectSection={onSelectSection} activeSection={activeSection} pointColor={pointColor}>
         <div className="mx-auto shadow-sm transition-all" style={{ backgroundColor: calendarBgColor, borderRadius: s(sectionRadius), maxWidth: s(375), paddingTop: s(32), paddingBottom: s(32), paddingLeft: s(24), paddingRight: s(24) }}>
           <div className="mx-auto text-center" style={{ color: calendarDayColor, maxWidth: s(320), display: 'flex', flexDirection: 'column', gap: s(24) }}>
-            <h2 data-text-pick="1" onClick={(e) => pickSize(e, "calendarTitleSize")} className={`opacity-80 ${isModern ? "font-extralight tracking-[0.4em]" : isClassic ? "font-medium tracking-[0.2em]" : "font-light tracking-[0.3em]"}`} style={{ fontSize: `${s(calendarTitleSize)}px`, ...pickableStyle }}>{weddingDate.getFullYear()}. {weddingDate.getMonth() + 1}. {weddingDate.getDate()}</h2>
-            <div className="grid grid-cols-7 font-light" style={{ fontSize: `${s(calendarDaySize)}px`, gap: s(8) }}>
+            <h2 data-text-pick="1" onClick={(e) => pickSize(e, "calendarTitleSize")} className={`opacity-80 ${isModern ? "font-extralight tracking-[0.4em]" : isClassic ? "font-medium tracking-[0.2em]" : "font-light tracking-[0.3em]"}`} style={{ fontSize: `${ht(calendarTitleSize)}px`, ...pickableStyle }}>{weddingDate.getFullYear()}. {weddingDate.getMonth() + 1}. {weddingDate.getDate()}</h2>
+            <div className="grid grid-cols-7 font-light" style={{ fontSize: `${ht(calendarDaySize)}px`, gap: s(8) }}>
               {["일", "월", "화", "수", "목", "금", "토"].map((d) => (
                 <div key={d} data-text-pick="1" data-pick-group="calendar-grid" onClick={(e) => pickSize(e, "calendarDaySize")} className="font-black opacity-20" style={pickableStyle}>{d}</div>
               ))}
@@ -1469,7 +1489,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
 
       {/* ===== GALLERY SECTION ===== */}
       <InteractiveSection id="album" dataSection="gallery" className="inv-gallery" style={{ paddingTop: s(72), paddingBottom: s(96) }} isPreview={isPreview} onSelectSection={onSelectSection} activeSection={activeSection} pointColor={pointColor}>
-        <div className="text-center" style={{ marginBottom: s(40) }}><h2 data-text-pick="1" onClick={(e) => pickSize(e, "galleryTitleSize")} className={`inv-section-title ${sectionTitleClass}`} style={{ color: sectionTitleColor, fontSize: `${s(galleryTitleSize)}px`, ...pickableStyle }}>{isClassic ? "갤러리" : "Gallery"}</h2></div>
+        <div className="text-center" style={{ marginBottom: s(40) }}><h2 data-text-pick="1" onClick={(e) => pickSize(e, "galleryTitleSize")} className={`inv-section-title ${sectionTitleClass}`} style={{ color: sectionTitleColor, fontSize: `${t(galleryTitleSize)}px`, ...pickableStyle }}>{isClassic ? "갤러리" : "Gallery"}</h2></div>
         <div className="relative group/gallery">
           {currentPhotos.length > 2 && (
             <button
@@ -1501,7 +1521,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
                   <GalleryItem url={url} isPreview={isPreview} subBgColor={subBgColor} />
                 </div>
               )) : (
-                <div className="w-full flex items-center justify-center font-bold tracking-widest italic opacity-30" style={{ backgroundColor: subBgColor, color: textColor, padding: `${s(40)}px 0`, borderRadius: s(24), fontSize: s(12) }}>GALLERY IS EMPTY</div>
+                <div className="w-full flex items-center justify-center font-bold tracking-widest italic opacity-30" style={{ backgroundColor: subBgColor, color: textColor, padding: `${s(40)}px 0`, borderRadius: s(24), fontSize: ht(12) }}>GALLERY IS EMPTY</div>
               )
             ) : currentPhotos.length > 0 ? (
               currentPhotos.map((url, i) => (
@@ -1515,7 +1535,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
                 </div>
               ))
             ) : (
-              <div className="w-full flex items-center justify-center font-bold tracking-widest italic opacity-30" style={{ backgroundColor: subBgColor, color: textColor, padding: `${s(40)}px 0`, borderRadius: s(24), fontSize: s(12) }}>GALLERY IS EMPTY</div>
+              <div className="w-full flex items-center justify-center font-bold tracking-widest italic opacity-30" style={{ backgroundColor: subBgColor, color: textColor, padding: `${s(40)}px 0`, borderRadius: s(24), fontSize: ht(12) }}>GALLERY IS EMPTY</div>
             )}
           </div>
 
@@ -1551,7 +1571,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
               data-text-pick="1"
               onClick={(e) => pickSize(e, "noticeTitleSize")}
               className="inv-section-title font-black uppercase tracking-[0.4em] opacity-30"
-              style={{ color: sectionTitleColor, fontSize: `${s(noticeTitleSize)}px`, ...pickableStyle }}
+              style={{ color: sectionTitleColor, fontSize: `${t(noticeTitleSize)}px`, ...pickableStyle }}
             >
               {noticeTitleText}
             </h2>
@@ -1560,7 +1580,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
             data-text-pick="1"
             onClick={(e) => pickSize(e, "noticeContentSize")}
             className="font-light opacity-80 shadow-sm"
-            style={{ backgroundColor: bgColor, color: textColor, padding: s(32), borderRadius: s(sectionRadius), fontSize: `${s(noticeContentSize)}px`, lineHeight: 1.6, whiteSpace: 'pre-wrap', ...pickableStyle }}
+            style={{ backgroundColor: bgColor, color: textColor, padding: s(32), borderRadius: s(sectionRadius), fontSize: `${t(noticeContentSize)}px`, lineHeight: 1.6, whiteSpace: 'pre-wrap', ...pickableStyle }}
           >
             {noticeContentText}
           </div>
@@ -1570,9 +1590,9 @@ export default function InvitationView({ data, template, isPreview = false, comp
       {/* ===== LOCATION SECTION ===== */}
       <InteractiveSection id="location" dataSection="location" className="inv-location" style={{ paddingTop: s(56), paddingBottom: s(64), paddingLeft: s(20), paddingRight: s(20), display: 'flex', flexDirection: 'column', alignItems: 'center', gap: s(32) }} isPreview={isPreview} onSelectSection={onSelectSection} activeSection={activeSection} pointColor={pointColor}>
         <div className="text-center" style={{ display: 'flex', flexDirection: 'column', gap: s(24) }}>
-          <h2 data-text-pick="1" onClick={(e) => pickSize(e, "locationTitleSize")} className={`inv-section-title ${sectionTitleClass}`} style={{ color: sectionTitleColor, fontSize: `${s(locationTitleSize)}px`, ...pickableStyle }}>{isClassic ? "오시는 길" : "Location"}</h2>
-          <p data-text-pick="1" onClick={(e) => pickSize(e, "locationVenueNameSize")} className="inv-venue-name font-light tracking-widest" style={{ fontSize: `${s(locationVenueNameSize)}px`, whiteSpace: "pre-line", ...pickableStyle }}>{venueDisplayName}</p>
-          <p data-text-pick="1" onClick={(e) => pickSize(e, "locationAddressSize")} className="inv-venue-address opacity-50 font-light tracking-wide" style={{ fontSize: `${s(locationAddressSize)}px`, ...pickableStyle }}>{data.venueAddress}</p>
+          <h2 data-text-pick="1" onClick={(e) => pickSize(e, "locationTitleSize")} className={`inv-section-title ${sectionTitleClass}`} style={{ color: sectionTitleColor, fontSize: `${t(locationTitleSize)}px`, ...pickableStyle }}>{isClassic ? "오시는 길" : "Location"}</h2>
+          <p data-text-pick="1" onClick={(e) => pickSize(e, "locationVenueNameSize")} className="inv-venue-name font-light tracking-widest" style={{ fontSize: `${ht(locationVenueNameSize)}px`, whiteSpace: "pre-line", ...pickableStyle }}>{venueDisplayName}</p>
+          <p data-text-pick="1" onClick={(e) => pickSize(e, "locationAddressSize")} className="inv-venue-address opacity-50 font-light tracking-wide" style={{ fontSize: `${t(locationAddressSize)}px`, ...pickableStyle }}>{data.venueAddress}</p>
         </div>
         <div
           className="w-full overflow-hidden border border-current/10 shadow-inner"
@@ -1606,7 +1626,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
                   handleOpenNavigation(nav.key);
                 }}
                 className={`transition-all rounded-2xl font-bold uppercase tracking-widest shadow-sm active:scale-95 ${nav.color}`}
-                style={{ fontSize: `${s(navButtonTextSize)}px`, color: buttonTextColor, padding: `${s(16)}px 0`, borderRadius: s(16), ...(isPreview ? pickableStyle : {}) }}
+                style={{ fontSize: `${ht(navButtonTextSize)}px`, color: buttonTextColor, padding: `${s(16)}px 0`, borderRadius: s(16), ...(isPreview ? pickableStyle : {}) }}
               >
                 {nav.name}
               </button>
@@ -1619,7 +1639,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
       {bankAccounts.length > 0 && (
         <InteractiveSection id="account" dataSection="account" className="inv-account border-t border-current/10" style={{ paddingTop: s(80), paddingBottom: s(128), paddingLeft: s(20), paddingRight: s(20) }} isPreview={isPreview} onSelectSection={onSelectSection} activeSection={activeSection} pointColor={pointColor}>
           <div className="mx-auto" style={{ maxWidth: s(375), display: 'flex', flexDirection: 'column', gap: s(40) }}>
-            <div className="text-center" style={{ display: 'flex', flexDirection: 'column', gap: s(16) }}><h2 data-text-pick="1" onClick={(e) => pickSize(e, "accountTitleSize")} className={`inv-section-title ${sectionTitleClass}`} style={{ color: sectionTitleColor, fontSize: `${s(accountTitleSize)}px`, ...pickableStyle }}>{isClassic ? "마음 전하실 곳" : "Account"}</h2><p data-text-pick="1" onClick={(e) => pickSize(e, "accountSubtitleSize")} className="font-light opacity-50 italic" style={{ fontSize: `${s(accountSubtitleSize)}px`, ...pickableStyle }}>축하의 마음을 보내실 곳</p></div>
+            <div className="text-center" style={{ display: 'flex', flexDirection: 'column', gap: s(16) }}><h2 data-text-pick="1" onClick={(e) => pickSize(e, "accountTitleSize")} className={`inv-section-title ${sectionTitleClass}`} style={{ color: sectionTitleColor, fontSize: `${t(accountTitleSize)}px`, ...pickableStyle }}>{isClassic ? "마음 전하실 곳" : "Account"}</h2><p data-text-pick="1" onClick={(e) => pickSize(e, "accountSubtitleSize")} className="font-light opacity-50 italic" style={{ fontSize: `${t(accountSubtitleSize)}px`, ...pickableStyle }}>축하의 마음을 보내실 곳</p></div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: s(16) }}>
               {Object.entries(groupedAccounts).map(([side, accounts]) => (
                 <div key={side} style={{ display: 'flex', flexDirection: 'column', gap: s(8) }}>
@@ -1632,7 +1652,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
                       onClick={(e) => pickSize(e, "accountToggleLabelSize")}
                       onDoubleClick={(e) => pickSize(e, "accountToggleLabelSize")}
                       className="font-black uppercase tracking-widest"
-                      style={{ fontSize: `${s(accountToggleLabelSize)}px`, ...(isPreview ? pickableStyle : {}) }}
+                      style={{ fontSize: `${ht(accountToggleLabelSize)}px`, ...(isPreview ? pickableStyle : {}) }}
                     >
                       {side} 계좌번호 보기
                     </span>
@@ -1653,12 +1673,12 @@ export default function InvitationView({ data, template, isPreview = false, comp
                       {accounts.map((acc, i) => (
                         <div key={i} className="border border-current/10 shadow-sm flex flex-col" style={{ backgroundColor: bgColor, color: textColor, padding: s(32), borderRadius: s(32), gap: s(24) }}>
                           <div className="flex justify-between items-center">
-                            <span data-text-pick="1" data-pick-group="account-header" onClick={(e) => pickSize(e, "accountHeaderSize")} className="font-extrabold tracking-[0.08em] opacity-80" style={{ fontSize: `${s(accountHeaderSize)}px`, ...pickableStyle }}>{acc.bankName}</span>
-                            <button data-text-pick="1" data-pick-group="account-header" onClick={(e) => { if (isPreview) { pickSize(e, "accountHeaderSize"); return; } e.stopPropagation(); navigator.clipboard.writeText(acc.accountNumber); alert("복사되었습니다."); }} className="font-black uppercase tracking-widest transition-colors" style={{ backgroundColor: subBgColor, fontSize: `${s(accountHeaderSize)}px`, padding: `${s(4)}px ${s(16)}px`, borderRadius: s(20), ...(isPreview ? pickableStyle : {}) }}>Copy</button>
+                            <span data-text-pick="1" data-pick-group="account-header" onClick={(e) => pickSize(e, "accountHeaderSize")} className="font-extrabold tracking-[0.08em] opacity-80" style={{ fontSize: `${ht(accountHeaderSize)}px`, ...pickableStyle }}>{acc.bankName}</span>
+                            <button data-text-pick="1" data-pick-group="account-header" onClick={(e) => { if (isPreview) { pickSize(e, "accountHeaderSize"); return; } e.stopPropagation(); navigator.clipboard.writeText(acc.accountNumber); alert("복사되었습니다."); }} className="font-black uppercase tracking-widest transition-colors" style={{ backgroundColor: subBgColor, fontSize: `${ht(accountHeaderSize)}px`, padding: `${s(4)}px ${s(16)}px`, borderRadius: s(20), ...(isPreview ? pickableStyle : {}) }}>Copy</button>
                           </div>
                           <div className="flex justify-between items-end">
-                            <span data-text-pick="1" data-pick-group="account-info" onClick={(e) => pickSize(e, "accountInfoSize")} className="font-light tracking-tighter" style={{ fontSize: `${s(accountInfoSize)}px`, ...pickableStyle }}>{acc.accountNumber}</span>
-                            <span data-text-pick="1" data-pick-group="account-info" onClick={(e) => pickSize(e, "accountInfoSize")} className="font-bold border-b pb-1" style={{ borderColor: pointColor, fontSize: `${s(Math.round(accountInfoSize * 0.7 * 10) / 10)}px`, ...pickableStyle }}>{acc.ownerName}</span>
+                            <span data-text-pick="1" data-pick-group="account-info" onClick={(e) => pickSize(e, "accountInfoSize")} className="font-light tracking-tighter" style={{ fontSize: `${ht(accountInfoSize)}px`, ...pickableStyle }}>{acc.accountNumber}</span>
+                            <span data-text-pick="1" data-pick-group="account-info" onClick={(e) => pickSize(e, "accountInfoSize")} className="font-bold border-b pb-1" style={{ borderColor: pointColor, fontSize: `${ht(Math.round(accountInfoSize * 0.7 * 10) / 10)}px`, ...pickableStyle }}>{acc.ownerName}</span>
                           </div>
                         </div>
                       ))}
@@ -1676,12 +1696,12 @@ export default function InvitationView({ data, template, isPreview = false, comp
           <div className="mx-auto" style={{ maxWidth: s(375), display: 'flex', flexDirection: 'column', gap: s(40) }}>
             <div className="text-center" style={{ display: 'flex', flexDirection: 'column', gap: s(16) }}>
               <div className="mx-auto h-px opacity-40" style={{ backgroundColor: pointColor, width: s(56) }} />
-              <h2 data-text-pick="1" onClick={(e) => pickSize(e, "attendanceTitleSize")} className={`inv-section-title ${sectionTitleClass}`} style={{ color: sectionTitleColor, fontSize: `${s(attendanceTitleSize)}px`, ...pickableStyle }}>참석 여부</h2>
-              <p data-text-pick="1" onClick={(e) => pickSize(e, "attendanceDescSize")} className="opacity-55 tracking-wide" style={{ fontSize: `${s(attendanceDescSize)}px`, ...pickableStyle }}>간단한 응답을 남겨주시면 예식 준비에 큰 도움이 됩니다.</p>
+              <h2 data-text-pick="1" onClick={(e) => pickSize(e, "attendanceTitleSize")} className={`inv-section-title ${sectionTitleClass}`} style={{ color: sectionTitleColor, fontSize: `${ht(attendanceTitleSize)}px`, ...pickableStyle }}>참석 여부</h2>
+              <p data-text-pick="1" onClick={(e) => pickSize(e, "attendanceDescSize")} className="opacity-55 tracking-wide" style={{ fontSize: `${ht(attendanceDescSize)}px`, ...pickableStyle }}>간단한 응답을 남겨주시면 예식 준비에 큰 도움이 됩니다.</p>
             </div>
             <div className="border border-current/10 shadow-[0_10px_30px_rgba(0,0,0,0.06)]" style={{ backgroundColor: subBgColor, borderRadius: s(24), padding: s(32), display: 'flex', flexDirection: 'column', gap: s(24) }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: s(8) }}>
-                <p data-text-pick="1" data-pick-group="form-labels" onClick={(e) => pickSize(e, "attendanceLabelSize")} className="font-semibold opacity-60" style={{ fontSize: `${s(attendanceLabelSize)}px`, ...pickableStyle }}>성함</p>
+                <p data-text-pick="1" data-pick-group="form-labels" onClick={(e) => pickSize(e, "attendanceLabelSize")} className="font-semibold opacity-60" style={{ fontSize: `${ht(attendanceLabelSize)}px`, ...pickableStyle }}>성함</p>
                 <input
                   data-text-pick="1"
                   data-pick-group="form-placeholders"
@@ -1691,24 +1711,24 @@ export default function InvitationView({ data, template, isPreview = false, comp
                   onClick={(e) => { if (isPreview) pickSize(e, "formPlaceholderSize"); }}
                   onChange={(e) => preserveScrollWhile(() => setAttendanceForm((prev) => ({ ...prev, name: e.target.value })))}
                   className="inv-form-placeholder w-full bg-white text-zinc-900 border border-current/10 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-black/15"
-                  style={{ fontSize: s(14), padding: `${s(12)}px ${s(16)}px`, borderRadius: s(12), "--placeholder-size": `${s(formPlaceholderSize)}px` }}
+                  style={{ fontSize: s(14), padding: `${s(12)}px ${s(16)}px`, borderRadius: s(12), "--placeholder-size": `${ht(formPlaceholderSize)}px` }}
                   placeholder="이름을 입력하세요"
                 />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: s(16) }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: s(8) }}>
-                  <p data-text-pick="1" data-pick-group="form-labels" onClick={(e) => pickSize(e, "attendanceLabelSize")} className="font-semibold opacity-60" style={{ fontSize: `${s(attendanceLabelSize)}px`, ...pickableStyle }}>구분</p>
+                  <p data-text-pick="1" data-pick-group="form-labels" onClick={(e) => pickSize(e, "attendanceLabelSize")} className="font-semibold opacity-60" style={{ fontSize: `${ht(attendanceLabelSize)}px`, ...pickableStyle }}>구분</p>
                   <div className="grid grid-cols-2 bg-white border border-current/10" style={{ gap: s(8), padding: s(4), borderRadius: s(12) }}>
-                    <button data-text-pick="1" data-pick-group="attendance-options" onClick={(e) => { if (isPreview) { pickSize(e, "attendanceOptionTextSize"); return; } setAttendanceForm((prev) => ({ ...prev, side: "신랑측" })); }} className={`rounded-lg font-semibold transition-all ${attendanceForm.side === "신랑측" ? "shadow-sm" : "text-zinc-500 hover:bg-zinc-100/70"}`} style={{ padding: `${s(10)}px 0`, fontSize: `${s(attendanceOptionTextSize)}px`, ...(attendanceForm.side === "신랑측" ? { backgroundColor: buttonColor, color: buttonTextColor } : {}), ...(isPreview ? pickableStyle : {}) }}>신랑측</button>
-                    <button data-text-pick="1" data-pick-group="attendance-options" onClick={(e) => { if (isPreview) { pickSize(e, "attendanceOptionTextSize"); return; } setAttendanceForm((prev) => ({ ...prev, side: "신부측" })); }} className={`rounded-lg font-semibold transition-all ${attendanceForm.side === "신부측" ? "shadow-sm" : "text-zinc-500 hover:bg-zinc-100/70"}`} style={{ padding: `${s(10)}px 0`, fontSize: `${s(attendanceOptionTextSize)}px`, ...(attendanceForm.side === "신부측" ? { backgroundColor: buttonColor, color: buttonTextColor } : {}), ...(isPreview ? pickableStyle : {}) }}>신부측</button>
+                    <button data-text-pick="1" data-pick-group="attendance-options" onClick={(e) => { if (isPreview) { pickSize(e, "attendanceOptionTextSize"); return; } setAttendanceForm((prev) => ({ ...prev, side: "신랑측" })); }} className={`rounded-lg font-semibold transition-all ${attendanceForm.side === "신랑측" ? "shadow-sm" : "text-zinc-500 hover:bg-zinc-100/70"}`} style={{ padding: `${s(10)}px 0`, fontSize: `${ht(attendanceOptionTextSize)}px`, ...(attendanceForm.side === "신랑측" ? { backgroundColor: buttonColor, color: buttonTextColor } : {}), ...(isPreview ? pickableStyle : {}) }}>신랑측</button>
+                    <button data-text-pick="1" data-pick-group="attendance-options" onClick={(e) => { if (isPreview) { pickSize(e, "attendanceOptionTextSize"); return; } setAttendanceForm((prev) => ({ ...prev, side: "신부측" })); }} className={`rounded-lg font-semibold transition-all ${attendanceForm.side === "신부측" ? "shadow-sm" : "text-zinc-500 hover:bg-zinc-100/70"}`} style={{ padding: `${s(10)}px 0`, fontSize: `${ht(attendanceOptionTextSize)}px`, ...(attendanceForm.side === "신부측" ? { backgroundColor: buttonColor, color: buttonTextColor } : {}), ...(isPreview ? pickableStyle : {}) }}>신부측</button>
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: s(8) }}>
-                  <p data-text-pick="1" data-pick-group="form-labels" onClick={(e) => pickSize(e, "attendanceLabelSize")} className="font-semibold opacity-60" style={{ fontSize: `${s(attendanceLabelSize)}px`, ...pickableStyle }}>참석 여부</p>
+                  <p data-text-pick="1" data-pick-group="form-labels" onClick={(e) => pickSize(e, "attendanceLabelSize")} className="font-semibold opacity-60" style={{ fontSize: `${ht(attendanceLabelSize)}px`, ...pickableStyle }}>참석 여부</p>
                   <div className="grid grid-cols-2 bg-white border border-current/10" style={{ gap: s(8), padding: s(4), borderRadius: s(12) }}>
-                    <button data-text-pick="1" data-pick-group="attendance-options" onClick={(e) => { if (isPreview) { pickSize(e, "attendanceOptionTextSize"); return; } setAttendanceForm((prev) => ({ ...prev, attending: true })); }} className={`rounded-lg font-semibold transition-all ${attendanceForm.attending ? "shadow-sm" : "text-zinc-500 hover:bg-zinc-100/70"}`} style={{ padding: `${s(10)}px 0`, fontSize: `${s(attendanceOptionTextSize)}px`, ...(attendanceForm.attending ? { backgroundColor: buttonColor, color: buttonTextColor } : {}), ...(isPreview ? pickableStyle : {}) }}>참석</button>
-                    <button data-text-pick="1" data-pick-group="attendance-options" onClick={(e) => { if (isPreview) { pickSize(e, "attendanceOptionTextSize"); return; } setAttendanceForm((prev) => ({ ...prev, attending: false, meal: false })); }} className={`rounded-lg font-semibold transition-all ${!attendanceForm.attending ? "shadow-sm" : "text-zinc-500 hover:bg-zinc-100/70"}`} style={{ padding: `${s(10)}px 0`, fontSize: `${s(attendanceOptionTextSize)}px`, ...(!attendanceForm.attending ? { backgroundColor: buttonColor, color: buttonTextColor } : {}), ...(isPreview ? pickableStyle : {}) }}>불참</button>
+                    <button data-text-pick="1" data-pick-group="attendance-options" onClick={(e) => { if (isPreview) { pickSize(e, "attendanceOptionTextSize"); return; } setAttendanceForm((prev) => ({ ...prev, attending: true })); }} className={`rounded-lg font-semibold transition-all ${attendanceForm.attending ? "shadow-sm" : "text-zinc-500 hover:bg-zinc-100/70"}`} style={{ padding: `${s(10)}px 0`, fontSize: `${ht(attendanceOptionTextSize)}px`, ...(attendanceForm.attending ? { backgroundColor: buttonColor, color: buttonTextColor } : {}), ...(isPreview ? pickableStyle : {}) }}>참석</button>
+                    <button data-text-pick="1" data-pick-group="attendance-options" onClick={(e) => { if (isPreview) { pickSize(e, "attendanceOptionTextSize"); return; } setAttendanceForm((prev) => ({ ...prev, attending: false, meal: false })); }} className={`rounded-lg font-semibold transition-all ${!attendanceForm.attending ? "shadow-sm" : "text-zinc-500 hover:bg-zinc-100/70"}`} style={{ padding: `${s(10)}px 0`, fontSize: `${ht(attendanceOptionTextSize)}px`, ...(!attendanceForm.attending ? { backgroundColor: buttonColor, color: buttonTextColor } : {}), ...(isPreview ? pickableStyle : {}) }}>불참</button>
                   </div>
                 </div>
               </div>
@@ -1716,7 +1736,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
               {attendanceForm.attending && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: s(16) }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: s(8) }}>
-                    <p data-text-pick="1" data-pick-group="form-labels" onClick={(e) => pickSize(e, "attendanceLabelSize")} className="font-semibold opacity-60" style={{ fontSize: `${s(attendanceLabelSize)}px`, ...pickableStyle }}>참석 인원</p>
+                    <p data-text-pick="1" data-pick-group="form-labels" onClick={(e) => pickSize(e, "attendanceLabelSize")} className="font-semibold opacity-60" style={{ fontSize: `${ht(attendanceLabelSize)}px`, ...pickableStyle }}>참석 인원</p>
                     <div className="flex items-center justify-between rounded-xl border border-current/10 bg-white px-3" style={{ height: s(48) }}>
                       <button
                         type="button"
@@ -1732,8 +1752,8 @@ export default function InvitationView({ data, template, isPreview = false, comp
                       </button>
                       <div className="text-center" style={{ minWidth: s(64) }}>
                         <span className="inline-flex items-baseline justify-center whitespace-nowrap text-zinc-900 leading-none" style={{ gap: s(4) }}>
-                          <span style={{ fontSize: s(18), fontWeight: 600 }}>{Math.max(1, Number(attendanceForm.count) || 1)}</span>
-                          <span style={{ fontSize: s(15), fontWeight: 500, opacity: 0.8 }}>명</span>
+                          <span style={{ fontSize: ht(18), fontWeight: 600 }}>{Math.max(1, Number(attendanceForm.count) || 1)}</span>
+                          <span style={{ fontSize: ht(15), fontWeight: 500, opacity: 0.8 }}>명</span>
                         </span>
                       </div>
                       <button
@@ -1751,7 +1771,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: s(8) }}>
-                    <p data-text-pick="1" data-pick-group="form-labels" onClick={(e) => pickSize(e, "attendanceLabelSize")} className="font-semibold opacity-60" style={{ fontSize: `${s(attendanceLabelSize)}px`, ...pickableStyle }}>식사 여부</p>
+                    <p data-text-pick="1" data-pick-group="form-labels" onClick={(e) => pickSize(e, "attendanceLabelSize")} className="font-semibold opacity-60" style={{ fontSize: `${ht(attendanceLabelSize)}px`, ...pickableStyle }}>식사 여부</p>
                     <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-white border border-current/10" style={{ height: s(48) }}>
                       <button
                         data-text-pick="1"
@@ -1761,7 +1781,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
                           setAttendanceForm((prev) => ({ ...prev, meal: true }));
                         }}
                         className={`h-full rounded-lg font-bold uppercase tracking-[0.12em] transition-all ${attendanceForm.meal ? "shadow-sm" : "text-zinc-500 hover:bg-zinc-100/70"}`}
-                        style={{ fontSize: s(14), ...(attendanceForm.meal ? { backgroundColor: buttonColor, color: buttonTextColor } : {}), ...(isPreview ? { fontSize: `${s(attendanceOptionTextSize)}px`, ...pickableStyle } : {}) }}
+                        style={{ fontSize: s(14), ...(attendanceForm.meal ? { backgroundColor: buttonColor, color: buttonTextColor } : {}), ...(isPreview ? { fontSize: `${ht(attendanceOptionTextSize)}px`, ...pickableStyle } : {}) }}
                       >
                         O
                       </button>
@@ -1773,7 +1793,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
                           setAttendanceForm((prev) => ({ ...prev, meal: false }));
                         }}
                         className={`h-full rounded-lg font-bold uppercase tracking-[0.12em] transition-all ${!attendanceForm.meal ? "shadow-sm" : "text-zinc-500 hover:bg-zinc-100/70"}`}
-                        style={{ fontSize: s(14), ...(!attendanceForm.meal ? { backgroundColor: buttonColor, color: buttonTextColor } : {}), ...(isPreview ? { fontSize: `${s(attendanceOptionTextSize)}px`, ...pickableStyle } : {}) }}
+                        style={{ fontSize: s(14), ...(!attendanceForm.meal ? { backgroundColor: buttonColor, color: buttonTextColor } : {}), ...(isPreview ? { fontSize: `${ht(attendanceOptionTextSize)}px`, ...pickableStyle } : {}) }}
                       >
                         X
                       </button>
@@ -1783,7 +1803,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
               )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: s(8) }}>
-                <p data-text-pick="1" data-pick-group="form-labels" onClick={(e) => pickSize(e, "attendanceLabelSize")} className="font-semibold opacity-60" style={{ fontSize: `${s(attendanceLabelSize)}px`, ...pickableStyle }}>메모</p>
+                <p data-text-pick="1" data-pick-group="form-labels" onClick={(e) => pickSize(e, "attendanceLabelSize")} className="font-semibold opacity-60" style={{ fontSize: `${ht(attendanceLabelSize)}px`, ...pickableStyle }}>메모</p>
                 <textarea
                   data-text-pick="1"
                   data-pick-group="form-placeholders"
@@ -1793,7 +1813,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
                   onClick={(e) => { if (isPreview) pickSize(e, "formPlaceholderSize"); }}
                   onChange={(e) => preserveScrollWhile(() => setAttendanceForm((prev) => ({ ...prev, message: e.target.value })))}
                   className="inv-form-placeholder w-full bg-white text-zinc-900 border border-current/10 placeholder:text-zinc-400 resize-none focus:outline-none focus:ring-2 focus:ring-black/15"
-                  style={{ height: s(96), padding: `${s(12)}px ${s(16)}px`, borderRadius: s(12), fontSize: s(14), "--placeholder-size": `${s(formPlaceholderSize)}px` }}
+                  style={{ height: s(96), padding: `${s(12)}px ${s(16)}px`, borderRadius: s(12), fontSize: s(14), "--placeholder-size": `${ht(formPlaceholderSize)}px` }}
                   placeholder={attendanceForm.attending ? "전달 메모 (선택)" : "불참 사유 또는 전달 메모 (선택)"}
                 />
               </div>
@@ -1811,12 +1831,12 @@ export default function InvitationView({ data, template, isPreview = false, comp
           <div className="mx-auto" style={{ maxWidth: s(375), display: 'flex', flexDirection: 'column', gap: s(40) }}>
             <div className="text-center" style={{ display: 'flex', flexDirection: 'column', gap: s(16) }}>
               <div className="mx-auto h-px opacity-40" style={{ backgroundColor: pointColor, width: s(56) }} />
-              <h2 data-text-pick="1" onClick={(e) => pickSize(e, "guestbookTitleSize")} className={`inv-section-title ${sectionTitleClass}`} style={{ color: sectionTitleColor, fontSize: `${s(guestbookTitleSize)}px`, ...pickableStyle }}>축하 메시지</h2>
-              <p data-text-pick="1" onClick={(e) => pickSize(e, "guestbookDescSize")} className="opacity-55 tracking-wide" style={{ fontSize: `${s(guestbookDescSize)}px`, ...pickableStyle }}>짧은 한 줄도 두 분에게는 오래 남는 축복이 됩니다.</p>
+              <h2 data-text-pick="1" onClick={(e) => pickSize(e, "guestbookTitleSize")} className={`inv-section-title ${sectionTitleClass}`} style={{ color: sectionTitleColor, fontSize: `${ht(guestbookTitleSize)}px`, ...pickableStyle }}>축하 메시지</h2>
+              <p data-text-pick="1" onClick={(e) => pickSize(e, "guestbookDescSize")} className="opacity-55 tracking-wide" style={{ fontSize: `${ht(guestbookDescSize)}px`, ...pickableStyle }}>짧은 한 줄도 두 분에게는 오래 남는 축복이 됩니다.</p>
             </div>
             <div className="border border-current/10 shadow-[0_10px_30px_rgba(0,0,0,0.06)]" style={{ backgroundColor: subBgColor, borderRadius: s(24), padding: s(32), display: 'flex', flexDirection: 'column', gap: s(24) }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: s(8) }}>
-                <p data-text-pick="1" data-pick-group="form-labels" onClick={(e) => pickSize(e, "attendanceLabelSize")} className="font-semibold opacity-60" style={{ fontSize: `${s(attendanceLabelSize)}px`, ...pickableStyle }}>작성자</p>
+                <p data-text-pick="1" data-pick-group="form-labels" onClick={(e) => pickSize(e, "attendanceLabelSize")} className="font-semibold opacity-60" style={{ fontSize: `${ht(attendanceLabelSize)}px`, ...pickableStyle }}>작성자</p>
                 <input
                   data-text-pick="1"
                   data-pick-group="form-placeholders"
@@ -1826,12 +1846,12 @@ export default function InvitationView({ data, template, isPreview = false, comp
                   onClick={(e) => { if (isPreview) pickSize(e, "formPlaceholderSize"); }}
                   onChange={(e) => preserveScrollWhile(() => setGuestbookForm((prev) => ({ ...prev, writerName: e.target.value })))}
                   className="inv-form-placeholder w-full bg-white text-zinc-900 border border-current/10 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-black/15"
-                  style={{ padding: `${s(12)}px ${s(16)}px`, borderRadius: s(12), fontSize: s(14), "--placeholder-size": `${s(formPlaceholderSize)}px` }}
+                  style={{ padding: `${s(12)}px ${s(16)}px`, borderRadius: s(12), fontSize: s(14), "--placeholder-size": `${ht(formPlaceholderSize)}px` }}
                   placeholder="이름"
                 />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: s(8) }}>
-                <p data-text-pick="1" data-pick-group="form-labels" onClick={(e) => pickSize(e, "attendanceLabelSize")} className="font-semibold opacity-60" style={{ fontSize: `${s(attendanceLabelSize)}px`, ...pickableStyle }}>메시지</p>
+                <p data-text-pick="1" data-pick-group="form-labels" onClick={(e) => pickSize(e, "attendanceLabelSize")} className="font-semibold opacity-60" style={{ fontSize: `${ht(attendanceLabelSize)}px`, ...pickableStyle }}>메시지</p>
                 <textarea
                   data-text-pick="1"
                   data-pick-group="form-placeholders"
@@ -1841,7 +1861,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
                   onClick={(e) => { if (isPreview) pickSize(e, "formPlaceholderSize"); }}
                   onChange={(e) => preserveScrollWhile(() => setGuestbookForm((prev) => ({ ...prev, content: e.target.value })))}
                   className="inv-form-placeholder w-full bg-white text-zinc-900 border border-current/10 placeholder:text-zinc-400 resize-none focus:outline-none focus:ring-2 focus:ring-black/15"
-                  style={{ height: s(144), padding: `${s(12)}px ${s(16)}px`, borderRadius: s(12), fontSize: s(14), "--placeholder-size": `${s(formPlaceholderSize)}px` }}
+                  style={{ height: s(144), padding: `${s(12)}px ${s(16)}px`, borderRadius: s(12), fontSize: s(14), "--placeholder-size": `${ht(formPlaceholderSize)}px` }}
                   placeholder="축하 메시지를 남겨주세요"
                 />
               </div>
@@ -1854,10 +1874,10 @@ export default function InvitationView({ data, template, isPreview = false, comp
               {guestbookEntries.slice(0, guestbookViewCount).map((entry) => (
                 <div key={entry.id} className="bg-white border border-zinc-100 shadow-sm" style={{ padding: `${s(24)}px ${s(32)}px`, borderRadius: s(24), display: 'flex', flexDirection: 'column', gap: s(12) }}>
                   <div className="flex justify-between items-center" style={{ paddingLeft: s(4), paddingRight: s(4) }}>
-                    <span className="font-bold opacity-80" style={{ fontSize: s(14) }}>{entry.writerName}</span>
-                    <span className="opacity-30 font-light" style={{ fontSize: s(10) }}>{new Date(entry.createdAt).toLocaleDateString()}</span>
+                    <span className="font-bold opacity-80" style={{ fontSize: ht(14) }}>{entry.writerName}</span>
+                    <span className="opacity-30 font-light" style={{ fontSize: ht(10) }}>{new Date(entry.createdAt).toLocaleDateString()}</span>
                   </div>
-                  <p className="font-light opacity-70 leading-relaxed whitespace-pre-wrap px-1" style={{ fontSize: s(14) }}>{entry.content}</p>
+                  <p className="font-light opacity-70 leading-relaxed whitespace-pre-wrap px-1" style={{ fontSize: ht(14) }}>{entry.content}</p>
                 </div>
               ))}
               {guestbookEntries.length > guestbookViewCount && (
@@ -1865,7 +1885,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
                   type="button"
                   onClick={() => setGuestbookViewCount((prev) => prev + 5)}
                   className="mx-auto block font-bold opacity-40 hover:opacity-100 transition-all border-b"
-                  style={{ fontSize: s(12), marginTop: s(16), paddingBottom: s(4) }}
+                  style={{ fontSize: ht(12), marginTop: s(16), paddingBottom: s(4) }}
                 >
                   더 보기
                 </button>
@@ -1910,7 +1930,7 @@ export default function InvitationView({ data, template, isPreview = false, comp
             )}
           </div>
         )}
-        <p data-text-pick="1" onClick={(e) => pickSize(e, "footerWeddingOfSize")} className="font-bold tracking-widest uppercase opacity-40" style={{ color: footerColor, fontSize: `${s(footerWeddingOfSize)}px`, ...pickableStyle }}>Wedding of {groomDisplayName} & {brideDisplayName}</p>
+        <p data-text-pick="1" onClick={(e) => pickSize(e, "footerWeddingOfSize")} className="font-bold tracking-widest uppercase opacity-40" style={{ color: footerColor, fontSize: `${t(footerWeddingOfSize)}px`, ...pickableStyle }}>Wedding of {groomDisplayName} & {brideDisplayName}</p>
       </footer>
 
       {!isPreview && data.bgmUrl && (

@@ -1,13 +1,13 @@
 import { useMemo } from "react";
 import { useAuth } from "../lib/auth";
 
-export default function NaverAuthButton({ className = "", onError, variant = "full" }) {
+export default function NaverAuthButton({ className = "", onError, variant = "full", mode = "login" }) {
   const { buildNaverAuthUrl } = useAuth();
   const clientId = useMemo(() => import.meta.env.VITE_NAVER_CLIENT_ID || "", []);
 
   function handleClick() {
     try {
-      const url = buildNaverAuthUrl();
+      const url = buildNaverAuthUrl(mode);
       window.location.href = url;
     } catch (err) {
       onError?.(err?.message || "네이버 로그인 URL 생성에 실패했습니다.");

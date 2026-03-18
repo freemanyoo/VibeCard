@@ -350,6 +350,7 @@ public class AdminService {
         aiPromptBlockLogRepository.save(
                 AiPromptBlockLog.builder()
                         .userId(userId)
+                        .user(userId != null ? userRepository.findById(userId).orElse(null) : null)
                         .userEmail(userEmail)
                         .prompt(safePrompt)
                         .reason(reason == null || reason.isBlank() ? "blocked" : reason)
@@ -361,9 +362,10 @@ public class AdminService {
         if (email == null || email.isBlank())
             return false;
         String normalized = email.trim().toLowerCase(Locale.ROOT);
-        if (!userRepository.existsByEmail(normalized))
+        Optional<com.wedding.api.entity.User> user = userRepository.findByEmail(normalized);
+        if (user.isEmpty())
             return false;
-        userRepository.deleteByEmail(normalized);
+        userRepository.delete(user.get());
         return true;
     }
 

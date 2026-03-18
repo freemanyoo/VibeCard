@@ -1,13 +1,13 @@
 import { useMemo } from "react";
 import { useAuth } from "../lib/auth";
 
-export default function KakaoAuthButton({ className = "", onError, variant = "full" }) {
+export default function KakaoAuthButton({ className = "", onError, variant = "full", mode = "login" }) {
   const { buildKakaoAuthUrl } = useAuth();
   const clientId = useMemo(() => import.meta.env.VITE_KAKAO_REST_API_KEY || "", []);
 
   function handleClick() {
     try {
-      const url = buildKakaoAuthUrl();
+      const url = buildKakaoAuthUrl(mode);
       window.location.href = url;
     } catch (err) {
       onError?.(err?.message || "카카오 로그인 URL 생성에 실패했습니다.");

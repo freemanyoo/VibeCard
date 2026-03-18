@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface InvitationRepository extends JpaRepository<Invitation, String> {
-    List<Invitation> findByUserIdOrderByCreatedAtDesc(String userId);
+    List<Invitation> findByUser_IdOrderByCreatedAtDesc(String userId);
     Optional<Invitation> findBySlug(String slug);
     List<Invitation> findTop10ByOrderByCreatedAtDesc();
 }

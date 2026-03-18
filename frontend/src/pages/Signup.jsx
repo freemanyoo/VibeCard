@@ -56,7 +56,7 @@ export default function Signup() {
     setSuccess(null);
     console.log("[GoogleAuth] credential callback received", { hasCredential: Boolean(credential), length: credential?.length || 0 });
     try {
-      await socialGoogleLogin(credential);
+      await socialGoogleLogin(credential, "signup");
       navigate("/dashboard");
     } catch (err) {
       console.error("[GoogleAuth] social signup failed", err?.response?.status, err?.response?.data || err);
@@ -125,10 +125,12 @@ export default function Signup() {
           />
           <NaverAuthButton
             variant="icon"
+            mode="signup"
             onError={(msg) => setError(msg)}
           />
           <KakaoAuthButton
             variant="icon"
+            mode="signup"
             onError={(msg) => setError(msg)}
           />
         </div>

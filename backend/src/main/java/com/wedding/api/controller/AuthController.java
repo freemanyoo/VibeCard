@@ -90,7 +90,8 @@ public class AuthController {
     @PostMapping("/social/google")
     public ResponseEntity<?> socialGoogle(@RequestBody Map<String, String> body) {
         String idToken = body != null ? body.get("idToken") : null;
-        AuthResponse res = authService.loginWithGoogleIdToken(idToken);
+        String mode = body != null ? body.get("mode") : null;
+        AuthResponse res = authService.loginWithGoogleIdToken(idToken, mode);
         if (!res.isSuccess()) {
             return ResponseEntity.status(401).body(Map.of("error", res.getError()));
         }
@@ -102,7 +103,8 @@ public class AuthController {
         String code = body != null ? body.get("code") : null;
         String state = body != null ? body.get("state") : null;
         String redirectUri = body != null ? body.get("redirectUri") : null;
-        AuthResponse res = authService.loginWithNaverCode(code, state, redirectUri);
+        String mode = body != null ? body.get("mode") : null;
+        AuthResponse res = authService.loginWithNaverCode(code, state, redirectUri, mode);
         if (!res.isSuccess()) {
             return ResponseEntity.status(401).body(Map.of("error", res.getError()));
         }
@@ -114,7 +116,8 @@ public class AuthController {
         String code = body != null ? body.get("code") : null;
         String state = body != null ? body.get("state") : null;
         String redirectUri = body != null ? body.get("redirectUri") : null;
-        AuthResponse res = authService.loginWithKakaoCode(code, state, redirectUri);
+        String mode = body != null ? body.get("mode") : null;
+        AuthResponse res = authService.loginWithKakaoCode(code, state, redirectUri, mode);
         if (!res.isSuccess()) {
             return ResponseEntity.status(401).body(Map.of("error", res.getError()));
         }

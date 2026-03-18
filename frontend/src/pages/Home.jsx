@@ -6,6 +6,7 @@ import MobileFrame from "../components/MobileFrame";
 import InvitationView from "../components/InvitationView";
 import MobileTemplatePreview from "../components/MobileTemplatePreview";
 import { WeddingData } from "../lib/data";
+import { getTypoForTemplate } from "../lib/skinDefaults";
 
 const getPreviewWeddingDateIso = (daysAhead = 30) => {
   const d = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000);
@@ -40,23 +41,77 @@ const HOME_PREVIEW_PHONE_WIDTH = 375;
 const HOME_PREVIEW_PHONE_HEIGHT = 750;
 const HOME_PREVIEW_CARD_EXTRA_HEIGHT = 205;
 
+const normalizeUrlCandidate = (value) => {
+  if (typeof value !== "string") return "";
+  const v = value.trim();
+  return v;
+};
+
+const isTemporaryPreviewUrl = (url) => {
+  const v = normalizeUrlCandidate(url);
+  return v.startsWith("blob:") || v.startsWith("data:");
+};
+
+const pickFirstUsableUrl = (candidates) => {
+  const normalized = candidates.map(normalizeUrlCandidate).filter(Boolean);
+  const persisted = normalized.find((url) => !isTemporaryPreviewUrl(url));
+  return persisted || normalized[0] || "";
+};
+
+const resolveSkinPreviewPhotoUrl = (skin, config) => {
+  const configCandidates = [
+    config?.mainPhotoUrl,
+    config?.photoUrl,
+    config?.analysisImageUrl,
+    config?.thumbnailUrl,
+  ];
+  return pickFirstUsableUrl([
+    skin?.displayPhotoUrl,
+    ...configCandidates,
+    skin?.mainPhotoUrl,
+    skin?.photoUrl,
+    skin?.thumbnail,
+    sampleInvitationData.mainPhotoUrl,
+  ]);
+};
+
 function SkinPhonePreview({ skin, cardScale = 1 }) {
   const scrollRef = useRef(null);
-  const config = (() => {
+  const skinConfig = (() => {
     try {
       return typeof skin.config === "string" ? JSON.parse(skin.config || "{}") : (skin.config || {});
     } catch {
       return {};
     }
   })();
-  const bgColor = config.bgColor || "#ffffff";
+  const legacyGradient = Number(skinConfig.imageGradient);
+  const resolvedSkinConfig = {
+    ...skinConfig,
+    ...(Number.isNaN(legacyGradient)
+      ? {}
+      : {
+        standardImageGradient: skinConfig.standardImageGradient ?? legacyGradient,
+        fullImageGradient: skinConfig.fullImageGradient ?? legacyGradient,
+        bottomImageGradient: skinConfig.bottomImageGradient ?? legacyGradient,
+      }),
+  };
+  const previewConfig = {
+    ...getTypoForTemplate(skin.slug),
+    ...resolvedSkinConfig,
+    mainPhotoZoom: skinConfig.mainPhotoZoom ?? 100,
+    mainPhotoAspectRatio: skinConfig.mainPhotoAspectRatio ?? 1,
+  };
+  const bgColor = previewConfig.bgColor || (skin.slug === "modern" ? "#f1f5f9" : skin.slug === "classic" ? "#faf6f1" : "#1a1a1a");
   const builderUrl = `/builder?template=${encodeURIComponent(skin.slug)}`;
-  const previewPhotoUrl =
-    skin.displayPhotoUrl ||
-    skin.thumbnail ||
-    skin.mainPhotoUrl ||
-    skin.photoUrl ||
-    sampleInvitationData.mainPhotoUrl;
+  const previewPhotoUrl = resolveSkinPreviewPhotoUrl(skin, resolvedSkinConfig);
+  const imageStyle = String(previewConfig.imageStyle || "standard").toLowerCase();
+  const previewData = {
+    ...sampleInvitationData,
+    mainPhotoUrl: previewPhotoUrl,
+    mainPhotoFit: resolvedSkinConfig.mainPhotoFit || skinConfig.mainPhotoFit || "cover",
+    mainPhotoPosition: skinConfig.mainPhotoPosition || "50% 50%",
+    config: previewConfig,
+  };
 
   return (
     <div className="relative mx-auto flex flex-col items-center">
@@ -89,15 +144,11 @@ function SkinPhonePreview({ skin, cardScale = 1 }) {
             <MobileFrame compact compactScale={1} className="hover:scale-[1.02]" backgroundColor={bgColor}>
               <div ref={scrollRef} className="absolute inset-0 overflow-y-auto hide-scrollbar">
                 <InvitationView
-                  data={{
-                    ...sampleInvitationData,
-                    mainPhotoUrl: previewPhotoUrl,
-                    config: { ...config },
-                  }}
+                  data={previewData}
                   template={skin.slug}
                   compactPreview
                   enableMainPhotoLightbox={false}
-                  disableMainPhotoOverlay={String(config.imageStyle || "standard") !== "full"}
+                  disableMainPhotoOverlay={imageStyle !== "full"}
                   forceFullImageDarken
                 />
               </div>

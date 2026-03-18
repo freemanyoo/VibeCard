@@ -28,6 +28,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -91,6 +92,44 @@ public class OpenAiInvitationService {
     private String visionModel;
     @Value("${upload.dir:./uploads}")
     private String uploadDir;
+
+    private static final List<String> ALLOWED_FONT_FAMILIES = List.of(
+        "sans-serif",
+        "'Noto Sans KR', sans-serif",
+        "'Nanum Gothic', sans-serif",
+        "'IBM Plex Sans KR', sans-serif",
+        "'Gothic A1', sans-serif",
+        "'Do Hyeon', sans-serif",
+        "'Jua', sans-serif",
+        "'Black Han Sans', sans-serif",
+        "'Noto Serif KR', serif",
+        "'Nanum Myeongjo', serif",
+        "'Gowun Batang', serif",
+        "'Gowun Dodum', sans-serif",
+        "'Song Myung', serif",
+        "'Hahmlet', serif",
+        "'Nanum Pen Script', cursive",
+        "'Nanum Brush Script', cursive",
+        "'Stylish', sans-serif",
+        "'Gaegu', cursive",
+        "'Hi Melody', cursive",
+        "'Gamja Flower', cursive",
+        "'Single Day', cursive",
+        "'Cormorant Garamond', serif",
+        "'Playfair Display', serif",
+        "'Lora', serif",
+        "'Montserrat', sans-serif",
+        "'Inter', sans-serif",
+        "'Roboto', sans-serif",
+        "'Open Sans', sans-serif",
+        "'Dancing Script', cursive",
+        "'Great Vibes', cursive",
+        "'Satisfy', cursive",
+        "'Libre Baskerville', serif",
+        "'Crimson Text', serif"
+    );
+    private static final String DEFAULT_ALLOWED_FONT_FAMILY = "'Noto Sans KR', sans-serif";
+
     public AiInvitationImageResponse generateFromReference(String sourceImageId, String photoUrl, String imageStyle, String modelAlias) {
         String alias = normalizeModelAlias(modelAlias);
         String resolvedToken = resolveAuthToken(alias);
@@ -525,12 +564,18 @@ public class OpenAiInvitationService {
             - dateColor: hex color
             - messageColor: hex color
             - sectionTitleColor: hex color
+            - calendarBgColor: hex color
+            - calendarDayColor: hex color
+            - calendarActiveColor: hex color
+            - calendarTitleSize: integer
+            - calendarDaySize: integer
             - buttonColor: hex color
             - buttonTextColor: hex color
             Rules:
             - Keep the uploaded photo as the main image. Do not generate a replacement image.
-            - Focus first on the most visible background setting and the most obvious people action.
-            - Only use broad visual cues that are immediately visible: background type, indoor or outdoor, overall brightness, and one dominant color cue.
+            - First understand the photo in detail before choosing colors.
+            - Carefully inspect: background location, venue type, indoor or outdoor, natural elements, sky or water, trees or flowers, architecture, hotel mood, studio mood, city mood, time of day, season feeling, weather feeling, brightness, contrast, and overall luxury level.
+            - Carefully inspect the couple: pose, distance between them, eye contact, smile, energy level, whether they are walking, running, standing, holding flowers, bouquet presence, dress silhouette, suit tone, veil, fabric texture, and whether the mood feels formal, romantic, lively, calm, elegant, luxurious, or natural.
             - Detect the dominant scene first, then choose sceneType from the allowed list.
             - Scene examples:
             - forest photo -> forest-friendly palette and natural premium background tone.
@@ -545,6 +590,7 @@ public class OpenAiInvitationService {
             - If the background is vivid, keep readability high with a controlled premium contrast.
             - If the photo feels luxurious, use more sophisticated, darker, cleaner, richer tones.
             - If the photo feels natural or bright, use softer, cleaner, airier tones.
+            - The design must clearly react to the uploaded photo. Avoid a generic neutral palette unless the photo itself is visually neutral.
             - Summary must reflect the actual visual mood, not a generic wedding phrase.
             - analysisSummary must focus first on the visible people action, pose, distance, and interaction, then describe the surrounding background or venue.
             - analysisSummary should mention concrete visible details before abstract mood words.
@@ -557,7 +603,10 @@ public class OpenAiInvitationService {
             - colorStrategy must use an emotional Korean color name that fits the actual image.
             - colorStrategy must cite only the single most relevant visual cue from the photo and explain briefly why that one color is the best main color using Adobe Color style harmony logic.
             - colorStrategy must briefly explain the design direction in a compact way. Keep it clearly shorter than analysisSummary.
-            - The structured color fields (bgColor, subBgColor, textColor, pointColor, titleColor, nameColor, dateColor, messageColor, sectionTitleColor, buttonColor, buttonTextColor) must still be valid HEX colors derived from that representative color and its harmonious supporting tones.
+            - The structured color fields (bgColor, subBgColor, textColor, pointColor, titleColor, nameColor, dateColor, messageColor, sectionTitleColor, calendarBgColor, calendarDayColor, calendarActiveColor, buttonColor, buttonTextColor) must still be valid HEX colors derived from that representative color and its harmonious supporting tones.
+            - The calendar colors and sizes must also be intentionally adjusted to match the detected scene. Do not leave the calendar styling generic.
+            - calendarTitleSize must be an integer between 20 and 34.
+            - calendarDaySize must be an integer between 11 and 18.
             - If exact detail is unclear, say only what is visually plausible and avoid inventing hidden details.
             - Choose a matching invitation background and text palette that fits the uploaded photo and a Korean mobile wedding invitation hero section.
             - The result must fit a Korean mobile wedding invitation hero section.
@@ -573,9 +622,11 @@ public class OpenAiInvitationService {
                 Additional user design request:
                 %s
 
-                - Apply the user request, but still keep the uploaded photo as the primary visual source.
-                - Use the photo first, then refine the palette and mood to match the request.
-                - If the user request conflicts with the actual photo, prioritize the actual photo while reflecting the request as a secondary styling hint.
+                - Apply the user request as the primary styling direction.
+                - Use the uploaded photo as the factual source, but let the user request lead the color and mood decision whenever both can coexist.
+                - If the user request conflicts with the actual photo, still keep the photo believable, but prioritize the user's intended design direction over a conservative photo-only interpretation.
+                - If the user explicitly asks for a bright, airy, light, clean, soft, or 화사한 tone, actively prefer a brighter main color direction.
+                - Do not default to ivory, cream, or beige unless the user explicitly asks for it or the image strongly supports it.
                 """.formatted(extra);
         }
         return prompt;
@@ -589,9 +640,10 @@ public class OpenAiInvitationService {
             Include:
             - the main background setting and venue
             - indoor or outdoor
-            - visible people, their relative position, and the single most obvious action or pose
-            - one brief note on overall brightness or the single strongest visible color cue if needed
-            Keep the description factual and specific, but do not expand into detailed lighting theory, texture analysis, or emotional interpretation.
+            - visible people, their relative position, pose, distance, gaze direction, and the single most obvious action
+            - bouquet, flowers, dress silhouette, suit tone, and whether the mood reads more formal, romantic, lively, calm, elegant, luxurious, or natural
+            - one brief note on overall brightness, time of day, and the single strongest visible color cue if needed
+            Keep the description factual and specific, but do not expand into detailed lighting theory or decorative prose.
             Do not invent hidden details. Only describe what is visually plausible from the image.
             """;
     }
@@ -617,6 +669,11 @@ public class OpenAiInvitationService {
             - dateColor: hex color
             - messageColor: hex color
             - sectionTitleColor: hex color
+            - calendarBgColor: hex color
+            - calendarDayColor: hex color
+            - calendarActiveColor: hex color
+            - calendarTitleSize: integer
+            - calendarDaySize: integer
             - buttonColor: hex color
             - buttonTextColor: hex color
             Rules:
@@ -634,7 +691,10 @@ public class OpenAiInvitationService {
             - colorStrategy must use an emotional Korean color name and explain the choice using the provided visual analysis as the source of truth.
             - colorStrategy must reference only the single most relevant described element and explain briefly why that one color is the best main color using Adobe Color style harmony logic.
             - colorStrategy must briefly explain the design direction in a compact way. Keep it clearly shorter than analysisSummary.
-            - The structured color fields (bgColor, subBgColor, textColor, pointColor, titleColor, nameColor, dateColor, messageColor, sectionTitleColor, buttonColor, buttonTextColor) must still be valid HEX colors derived from that representative color and its harmonious supporting tones.
+            - The structured color fields (bgColor, subBgColor, textColor, pointColor, titleColor, nameColor, dateColor, messageColor, sectionTitleColor, calendarBgColor, calendarDayColor, calendarActiveColor, buttonColor, buttonTextColor) must still be valid HEX colors derived from that representative color and its harmonious supporting tones.
+            - The calendar colors and sizes must also be intentionally adjusted to match the detected scene. Do not leave the calendar styling generic.
+            - calendarTitleSize must be an integer between 20 and 34.
+            - calendarDaySize must be an integer between 11 and 18.
             - congratulatoryMessage must feel calm, elegant, warm, and polished, and it must be plain prose with no headings or labels.
             - Layout target: %s
             - Output only a raw JSON object with no markdown, no code fences, and no extra explanation.
@@ -650,8 +710,11 @@ public class OpenAiInvitationService {
                 Additional user design request:
                 %s
 
-                - Apply the user request, but still prioritize the provided visual analysis.
-                - If the request conflicts with the visual analysis, prioritize the visual analysis and use the request as a secondary styling hint.
+                - Apply the user request as the primary styling direction.
+                - Use the provided visual analysis as the factual source, but let the user request lead the color and mood decision whenever both can coexist.
+                - If the user request conflicts with the visual analysis, keep the scene believable but prioritize the user's intended design direction over a conservative image-only interpretation.
+                - If the user explicitly asks for a bright, airy, light, clean, soft, or 화사한 tone, actively prefer a brighter main color direction.
+                - Do not default to ivory, cream, or beige unless the user explicitly asks for it or the described image strongly supports it.
                 """.formatted(extra);
         }
 
@@ -675,7 +738,14 @@ public class OpenAiInvitationService {
 
         try {
             JsonNode root = postJson(resolveEndpoint(modelAlias), payload, key);
-            return parseAnalysisResponse(root);
+            AnalysisResult result = parseAnalysisResponse(root);
+            if (result.configPatch().containsKey("fontFamily")) {
+                return result;
+            }
+            Map<String, Object> fallbackPatch = new LinkedHashMap<>(result.configPatch());
+            fallbackPatch.put("fontFamily", DEFAULT_ALLOWED_FONT_FAMILY);
+            log.warn("[AI Invitation] prompt-only response omitted fontFamily; using default allowed font");
+            return new AnalysisResult(result.summary(), result.colorStrategy(), result.congratulatoryMessage(), fallbackPatch);
         } finally {
             releaseOllamaModelIfConfigured(modelAlias, generalModelName, "general");
         }
@@ -693,6 +763,7 @@ public class OpenAiInvitationService {
             - analysisSummary: one short Korean paragraph in 2-3 sentences describing the intended people action impression first and the background setting second
             - colorStrategy: one concise Korean paragraph in 1 short sentence, or at most 2 short sentences, that selects exactly one representative main color using an emotional Korean color name and briefly explains why it fits the requested mood
             - congratulatoryMessage: warm and refined Korean wedding message in 1-2 sentences with no headings
+            - fontFamily: exactly one value from the allowed fontFamily list below
             - bgColor: hex color
             - subBgColor: hex color
             - textColor: hex color
@@ -702,6 +773,11 @@ public class OpenAiInvitationService {
             - dateColor: hex color
             - messageColor: hex color
             - sectionTitleColor: hex color
+            - calendarBgColor: hex color
+            - calendarDayColor: hex color
+            - calendarActiveColor: hex color
+            - calendarTitleSize: integer
+            - calendarDaySize: integer
             - buttonColor: hex color
             - buttonTextColor: hex color
             Rules:
@@ -717,13 +793,23 @@ public class OpenAiInvitationService {
             - colorStrategy must not contain HEX codes, markdown, bullets, numbered lists, or section headings.
             - colorStrategy must use an emotional Korean color name and explain briefly why that one color is the most suitable main color using Adobe Color style harmony logic.
             - colorStrategy must briefly explain the design direction in a compact way. Keep it clearly shorter than analysisSummary.
-            - The structured color fields (bgColor, subBgColor, textColor, pointColor, titleColor, nameColor, dateColor, messageColor, sectionTitleColor, buttonColor, buttonTextColor) must still be valid HEX colors derived from that representative color and its harmonious supporting tones.
+            - Treat the user request as the primary design direction.
+            - fontFamily must be selected from the allowed font list only.
+            - If the user explicitly asks for a bright, airy, light, clean, soft, or 화사한 tone, actively prefer a brighter palette direction.
+            - Do not default to ivory, cream, or beige unless the user's request clearly supports that direction.
+            - The structured color fields (bgColor, subBgColor, textColor, pointColor, titleColor, nameColor, dateColor, messageColor, sectionTitleColor, calendarBgColor, calendarDayColor, calendarActiveColor, buttonColor, buttonTextColor) must still be valid HEX colors derived from that representative color and its harmonious supporting tones.
+            - The calendar colors and sizes must also be intentionally adjusted to match the requested scene. Do not leave the calendar styling generic.
+            - calendarTitleSize must be an integer between 20 and 34.
+            - calendarDaySize must be an integer between 11 and 18.
             - congratulatoryMessage should be warm, calm, elegant, and polished, and it must be plain prose with no headings or labels.
             - Output only a raw JSON object with no markdown, no code fences, and no extra explanation.
 
+            Allowed fontFamily values:
+            %s
+
             User design request:
             %s
-            """.formatted(styleLabel, clean(promptRequest));
+            """.formatted(styleLabel, buildAllowedFontFamilyGuide(), clean(promptRequest));
     }
 
     private AnalysisResult parseAnalysisResponse(JsonNode root) throws Exception {
@@ -744,7 +830,11 @@ public class OpenAiInvitationService {
         String analysisSummary = textOrDefault(parsed.path("analysisSummary").asText(""), summary);
         String colorStrategy = textOrDefault(parsed.path("colorStrategy").asText(""), defaultColorStrategyForPalette(sceneType));
         String congratulatoryMessage = clean(parsed.path("congratulatoryMessage").asText(""));
+        String fontFamily = resolveAllowedFontFamily(parsed.path("fontFamily").asText(""));
         Map<String, Object> configPatch = new LinkedHashMap<>();
+        if (fontFamily != null) {
+            configPatch.put("fontFamily", fontFamily);
+        }
         putColor(configPatch, "bgColor", parsed.path("bgColor").asText(""));
         putColor(configPatch, "subBgColor", parsed.path("subBgColor").asText(""));
         putColor(configPatch, "textColor", parsed.path("textColor").asText(""));
@@ -754,15 +844,62 @@ public class OpenAiInvitationService {
         putColor(configPatch, "dateColor", parsed.path("dateColor").asText(""));
         putColor(configPatch, "messageColor", parsed.path("messageColor").asText(""));
         putColor(configPatch, "sectionTitleColor", parsed.path("sectionTitleColor").asText(""));
+        putColor(configPatch, "calendarBgColor", parsed.path("calendarBgColor").asText(""));
+        putColor(configPatch, "calendarDayColor", parsed.path("calendarDayColor").asText(""));
+        putColor(configPatch, "calendarActiveColor", parsed.path("calendarActiveColor").asText(""));
         putColor(configPatch, "buttonColor", parsed.path("buttonColor").asText(""));
         putColor(configPatch, "buttonTextColor", parsed.path("buttonTextColor").asText(""));
         if (configPatch.isEmpty()) {
             configPatch.putAll(defaultPaletteForScene(sceneType));
         }
+        putIntInRange(configPatch, "calendarTitleSize", parsed.path("calendarTitleSize").asText(""), 20, 34);
+        putIntInRange(configPatch, "calendarDaySize", parsed.path("calendarDaySize").asText(""), 11, 18);
+        applyDerivedCalendarDefaults(configPatch, sceneType);
         if (congratulatoryMessage.isBlank()) {
             congratulatoryMessage = defaultCongratulatoryMessage(sceneType);
         }
         return new AnalysisResult(analysisSummary, colorStrategy, congratulatoryMessage, configPatch);
+    }
+
+    private String buildAllowedFontFamilyGuide() {
+        return String.join("\n", ALLOWED_FONT_FAMILIES.stream().map((font) -> "- " + font).toList());
+    }
+
+    private String resolveAllowedFontFamily(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String input = raw.trim();
+        if (input.isBlank()) {
+            return null;
+        }
+        if (ALLOWED_FONT_FAMILIES.contains(input)) {
+            return input;
+        }
+
+        String normalizedInput = normalizeFontKey(input);
+        for (String allowed : ALLOWED_FONT_FAMILIES) {
+            String normalizedAllowed = normalizeFontKey(allowed);
+            if (normalizedAllowed.equals(normalizedInput)) {
+                return allowed;
+            }
+            if (normalizedAllowed.startsWith(normalizedInput + ",")) {
+                return allowed;
+            }
+            if (normalizedAllowed.contains(normalizedInput) || normalizedInput.contains(normalizedAllowed)) {
+                return allowed;
+            }
+        }
+        return null;
+    }
+
+    private String normalizeFontKey(String value) {
+        return value == null ? ""
+            : value
+                .toLowerCase(Locale.ROOT)
+                .replace("'", "")
+                .replace("\"", "")
+                .replaceAll("\\s+", "");
     }
 
     private String extractResponseContent(JsonNode contentNode) {
@@ -1208,6 +1345,9 @@ public class OpenAiInvitationService {
                 Map.entry("dateColor", "#426A4D"),
                 Map.entry("messageColor", "#32523B"),
                 Map.entry("sectionTitleColor", "#2E5A3A"),
+                Map.entry("calendarBgColor", "#DCEBDD"),
+                Map.entry("calendarDayColor", "#1F3527"),
+                Map.entry("calendarActiveColor", "#4C8B5F"),
                 Map.entry("buttonColor", "#315F3D"),
                 Map.entry("buttonTextColor", "#FFFFFF")
             );
@@ -1221,6 +1361,9 @@ public class OpenAiInvitationService {
                 Map.entry("dateColor", "#4A7391"),
                 Map.entry("messageColor", "#32566F"),
                 Map.entry("sectionTitleColor", "#2E668A"),
+                Map.entry("calendarBgColor", "#D9ECF6"),
+                Map.entry("calendarDayColor", "#16394F"),
+                Map.entry("calendarActiveColor", "#3A84B8"),
                 Map.entry("buttonColor", "#2E6F9B"),
                 Map.entry("buttonTextColor", "#FFFFFF")
             );
@@ -1234,6 +1377,9 @@ public class OpenAiInvitationService {
                 Map.entry("dateColor", "#7A6240"),
                 Map.entry("messageColor", "#4B3B2B"),
                 Map.entry("sectionTitleColor", "#60492F"),
+                Map.entry("calendarBgColor", "#E8DBC6"),
+                Map.entry("calendarDayColor", "#2B221A"),
+                Map.entry("calendarActiveColor", "#B28A4A"),
                 Map.entry("buttonColor", "#8D6B36"),
                 Map.entry("buttonTextColor", "#FFFFFF")
             );
@@ -1247,6 +1393,9 @@ public class OpenAiInvitationService {
                 Map.entry("dateColor", "#8F5A6D"),
                 Map.entry("messageColor", "#6F4656"),
                 Map.entry("sectionTitleColor", "#7E4C5F"),
+                Map.entry("calendarBgColor", "#F5E3EA"),
+                Map.entry("calendarDayColor", "#4A2A35"),
+                Map.entry("calendarActiveColor", "#C97A96"),
                 Map.entry("buttonColor", "#B56785"),
                 Map.entry("buttonTextColor", "#FFFFFF")
             );
@@ -1260,6 +1409,9 @@ public class OpenAiInvitationService {
                 Map.entry("dateColor", "#6C6259"),
                 Map.entry("messageColor", "#4A433D"),
                 Map.entry("sectionTitleColor", "#5A5048"),
+                Map.entry("calendarBgColor", "#EEEAE3"),
+                Map.entry("calendarDayColor", "#2A2A2A"),
+                Map.entry("calendarActiveColor", "#8B6E5A"),
                 Map.entry("buttonColor", "#6E5847"),
                 Map.entry("buttonTextColor", "#FFFFFF")
             );
@@ -1291,6 +1443,35 @@ public class OpenAiInvitationService {
         if (!cleaned.isBlank()) {
             target.put(key, cleaned);
         }
+    }
+
+    private void putIntInRange(Map<String, Object> target, String key, String raw, int min, int max) {
+        String cleaned = clean(raw);
+        if (cleaned.isBlank()) {
+            return;
+        }
+        try {
+            int value = Integer.parseInt(cleaned);
+            if (value >= min && value <= max) {
+                target.put(key, value);
+            }
+        } catch (NumberFormatException ignored) {
+            // Ignore invalid numeric values from model output.
+        }
+    }
+
+    private void applyDerivedCalendarDefaults(Map<String, Object> configPatch, String sceneType) {
+        Map<String, Object> defaults = defaultPaletteForScene(sceneType);
+        configPatch.putIfAbsent("calendarBgColor", configPatch.getOrDefault("subBgColor", defaults.get("calendarBgColor")));
+        configPatch.putIfAbsent("calendarDayColor", configPatch.getOrDefault("textColor", defaults.get("calendarDayColor")));
+        configPatch.putIfAbsent("calendarActiveColor", configPatch.getOrDefault("pointColor", defaults.get("calendarActiveColor")));
+        configPatch.putIfAbsent("calendarTitleSize", isLuxuryLikeScene(sceneType) ? 30 : 28);
+        configPatch.putIfAbsent("calendarDaySize", 13);
+    }
+
+    private boolean isLuxuryLikeScene(String sceneType) {
+        String normalized = clean(sceneType).toLowerCase(Locale.ROOT);
+        return "hotel".equals(normalized) || "luxury".equals(normalized) || "classic".equals(normalized);
     }
 
     private String normalizeHexColor(String raw) {

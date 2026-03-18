@@ -1,45 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { Plus, Trash2, Edit2, Check, X, Palette, Type, Palette as PaletteIcon, ChevronDown, ChevronLeft, ChevronRight, Smartphone, Monitor, LayoutDashboard, Globe, Wand2, Upload } from "lucide-react";
 import api from "../lib/api";
+import { FONT_OPTIONS as FONTS } from "../lib/fontOptions";
 import { TYPO_DEFAULTS, getTypoForTemplate } from "../lib/skinDefaults";
 import InvitationView from "../components/InvitationView";
 import MobileFrame from "../components/MobileFrame";
-
-const FONTS = [
-  { name: "기본 (Pretendard)", value: "sans-serif", category: "고딕" },
-  { name: "Noto Sans KR", value: "'Noto Sans KR', sans-serif", category: "고딕" },
-  { name: "나눔고딕 (Nanum Gothic)", value: "'Nanum Gothic', sans-serif", category: "고딕" },
-  { name: "IBM Plex Sans KR", value: "'IBM Plex Sans KR', sans-serif", category: "고딕" },
-  { name: "Gothic A1", value: "'Gothic A1', sans-serif", category: "고딕" },
-  { name: "Do Hyeon (도현)", value: "'Do Hyeon', sans-serif", category: "고딕" },
-  { name: "Jua (주아)", value: "'Jua', sans-serif", category: "고딕" },
-  { name: "Black Han Sans", value: "'Black Han Sans', sans-serif", category: "고딕" },
-  { name: "Noto Serif KR", value: "'Noto Serif KR', serif", category: "명조" },
-  { name: "나눔명조 (Nanum Myeongjo)", value: "'Nanum Myeongjo', serif", category: "명조" },
-  { name: "고운바탕 (Gowun Batang)", value: "'Gowun Batang', serif", category: "명조" },
-  { name: "고운돋움 (Gowun Dodum)", value: "'Gowun Dodum', sans-serif", category: "명조" },
-  { name: "송명 (Song Myung)", value: "'Song Myung', serif", category: "명조" },
-  { name: "Hahmlet", value: "'Hahmlet', serif", category: "명조" },
-  { name: "나눔 손글씨 펜 (Nanum Pen Script)", value: "'Nanum Pen Script', cursive", category: "손글씨" },
-  { name: "나눔 손글씨 붓 (Nanum Brush Script)", value: "'Nanum Brush Script', cursive", category: "손글씨" },
-  { name: "Stylish", value: "'Stylish', sans-serif", category: "손글씨" },
-  { name: "Gaegu (개구)", value: "'Gaegu', cursive", category: "손글씨" },
-  { name: "Hi Melody", value: "'Hi Melody', cursive", category: "손글씨" },
-  { name: "Gamja Flower", value: "'Gamja Flower', cursive", category: "손글씨" },
-  { name: "Single Day", value: "'Single Day', cursive", category: "손글씨" },
-  { name: "Cormorant Garamond", value: "'Cormorant Garamond', serif", category: "영문" },
-  { name: "Playfair Display", value: "'Playfair Display', serif", category: "영문" },
-  { name: "Lora", value: "'Lora', serif", category: "영문" },
-  { name: "Montserrat", value: "'Montserrat', sans-serif", category: "영문" },
-  { name: "Inter", value: "'Inter', sans-serif", category: "영문" },
-  { name: "Roboto", value: "'Roboto', sans-serif", category: "영문" },
-  { name: "Open Sans", value: "'Open Sans', sans-serif", category: "영문" },
-  { name: "Dancing Script", value: "'Dancing Script', cursive", category: "영문" },
-  { name: "Great Vibes", value: "'Great Vibes', cursive", category: "영문" },
-  { name: "Satisfy", value: "'Satisfy', cursive", category: "영문" },
-  { name: "Libre Baskerville", value: "'Libre Baskerville', serif", category: "영문" },
-  { name: "Crimson Text", value: "'Crimson Text', serif", category: "영문" },
-];
 
 const EDITOR_BASE_W = 303;
 const EDITOR_BASE_H = 440;
@@ -67,6 +32,12 @@ const defaultConfig = {
   buttonColor: "",
   buttonTextColor: "",
   footerColor: "",
+  saveTheDateReadability: 0,
+  heroTitleReadability: 0,
+  heroNamesReadability: 0,
+  heroDateReadability: 0,
+  heroVenueReadability: 0,
+  heroDdayReadability: 0,
   imageStyle: "standard",
   imageHeight: 460,
   imageWidth: 100,
@@ -84,6 +55,8 @@ const defaultConfig = {
   venueDisplayName: "",
   heroVenueNameText: "",
   invitationBodyText: "",
+  noticeTitleText: "",
+  noticeContentText: "",
   groomFatherText: "",
   groomMotherText: "",
   groomRelationText: "",
@@ -94,22 +67,24 @@ const defaultConfig = {
 };
 
 const TEXT_PICKER_META = {
-  titleSize: { label: "메인 제목", colorKey: "titleColor", fallbackColorKey: "textColor", min: 20, max: 80, textKey: "mainTitleText", textLabel: "제목 문구" },
+  titleSize: { label: "메인 제목", colorKey: "titleColor", fallbackColorKey: "textColor", min: 20, max: 80, textKey: "mainTitleText", textLabel: "제목 문구", readabilityKey: "heroTitleReadability", readabilityLabel: "제목 가독성" },
   namesSize: {
     label: "신랑·신부 이름",
     colorKey: "nameColor",
     fallbackColorKey: "textColor",
     min: 16,
     max: 60,
+    readabilityKey: "heroNamesReadability",
+    readabilityLabel: "이름 가독성",
     textFields: [
       { key: "groomDisplayName", label: "신랑 이름", placeholder: "신랑 이름" },
       { key: "brideDisplayName", label: "신부 이름", placeholder: "신부 이름" },
     ],
   },
-  dateSize: { label: "히어로 날짜/시간", colorKey: "dateColor", fallbackColorKey: "textColor", min: 10, max: 30 },
-  saveTheDateSize: { label: "Save The Date", colorKey: "saveTheDateColor", fallbackColorKey: "pointColor", min: 8, max: 24, textKey: "saveTheDateText", textLabel: "문구" },
-  heroVenueNameSize: { label: "히어로 예식장명", colorKey: "heroVenueColor", fallbackColorKey: "textColor", min: 12, max: 40, textKey: "venueDisplayName", textLabel: "예식장명 문구(공통)" },
-  heroDDaySize: { label: "D-day 배지", colorKey: "heroDdayColor", fallbackColorKey: "buttonColor", min: 8, max: 24 },
+  dateSize: { label: "히어로 날짜/시간", colorKey: "dateColor", fallbackColorKey: "textColor", min: 10, max: 30, readabilityKey: "heroDateReadability", readabilityLabel: "날짜 가독성" },
+  saveTheDateSize: { label: "Save The Date", colorKey: "saveTheDateColor", fallbackColorKey: "pointColor", min: 8, max: 24, textKey: "saveTheDateText", textLabel: "문구", readabilityKey: "saveTheDateReadability", readabilityLabel: "Save The Date 가독성" },
+  heroVenueNameSize: { label: "히어로 예식장명", colorKey: "heroVenueColor", fallbackColorKey: "textColor", min: 12, max: 40, textKey: "venueDisplayName", textLabel: "예식장명 문구(공통)", readabilityKey: "heroVenueReadability", readabilityLabel: "예식장명 가독성" },
+  heroDDaySize: { label: "D-day 배지", colorKey: "heroDdayColor", fallbackColorKey: "buttonColor", min: 8, max: 24, readabilityKey: "heroDdayReadability", readabilityLabel: "D-day 가독성" },
   contentSize: { label: "초대 메시지 본문", colorKey: "messageColor", fallbackColorKey: "textColor", min: 12, max: 40, textKey: "invitationBodyText", textLabel: "본문 문구" },
   familyLineSize: {
     label: "가족 소개 이름행",
@@ -138,6 +113,8 @@ const TEXT_PICKER_META = {
   accountInfoSize: { label: "계좌 정보(번호/예금주)", colorKey: "textColor", fallbackColorKey: "textColor", min: 12, max: 36 },
   attendanceTitleSize: { label: "참석 여부 제목", colorKey: "sectionTitleColor", fallbackColorKey: "pointColor", min: 8, max: 32 },
   attendanceDescSize: { label: "참석 안내문", colorKey: "textColor", fallbackColorKey: "textColor", min: 10, max: 24 },
+  noticeTitleSize: { label: "알림사항 제목", colorKey: "sectionTitleColor", fallbackColorKey: "pointColor", min: 8, max: 32, textKey: "noticeTitleText", textLabel: "제목 문구" },
+  noticeContentSize: { label: "알림사항 본문", colorKey: "textColor", fallbackColorKey: "textColor", min: 10, max: 32, textKey: "noticeContentText", textLabel: "본문 문구" },
   guestbookTitleSize: { label: "축하 메시지 제목", colorKey: "sectionTitleColor", fallbackColorKey: "pointColor", min: 8, max: 32 },
   guestbookDescSize: { label: "축하 메시지 안내문", colorKey: "textColor", fallbackColorKey: "textColor", min: 10, max: 24 },
   attendanceLabelSize: { label: "폼 라벨(성함/구분/참석여부/참석인원/식사여부/메모/작성자/메시지)", colorKey: "textColor", fallbackColorKey: "textColor", min: 9, max: 20 },
@@ -155,6 +132,8 @@ const TEXT_OVERRIDE_PLACEHOLDER = {
   brideDisplayName: "이영희",
   venueDisplayName: "아름다운 웨딩홀",
   invitationBodyText: "약속된 시간이 다가와\n사랑의 결실을 맺으려 합니다.",
+  noticeTitleText: "알림 사항",
+  noticeContentText: "전달하실 내용을 입력하세요.",
   groomFatherText: "김아빠",
   groomMotherText: "이엄마",
   groomRelationText: "차남",
@@ -243,6 +222,11 @@ const slugify = (text) => {
 };
 
 const compactText = (text) => (text || "").replace(/\s+/g, " ").trim();
+const clampReadabilityValue = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, Math.round(n)));
+};
 const formatLocalModelLabel = (modelName) => {
   const raw = String(modelName || "").trim();
   if (!raw) return "";
@@ -306,21 +290,7 @@ const isDarkHex = (value) => {
   return luminance < 0.55;
 };
 
-const normalizeConfigForSave = (rawConfig = {}) => {
-  const next = { ...rawConfig };
-  const imageStyle = String(next.imageStyle || "standard").toLowerCase();
-  if (imageStyle !== "full") return next;
-  const darkBg = isDarkHex(next.bgColor) || isDarkHex(next.subBgColor);
-  const heroColor = darkBg ? "#FFFFFF" : "#111111";
-  next.titleColor = heroColor;
-  next.nameColor = heroColor;
-  next.dateColor = heroColor;
-  next.saveTheDateColor = heroColor;
-  next.heroVenueColor = heroColor;
-  next.heroDdayColor = heroColor;
-  next.heroTextColorMode = "custom";
-  return next;
-};
+const normalizeConfigForSave = (rawConfig = {}) => ({ ...rawConfig });
 
 const rgbToHsl = ({ r, g, b }) => {
   const rn = r / 255;
@@ -1053,7 +1023,7 @@ ${fontCatalogText}
       invitationTitle: "우리\n결혼합니다",
       invitationMessage: "약속된 시간이 다가와\n사랑의 결실을 맺으려 합니다.\n오직 사랑 하나로 맺어지는\n저희의 축복된 시작을 함께해 주십시오.",
       mainPhotoUrl: displayPhotoUrl,
-      mainPhotoFit: "cover",
+      mainPhotoFit: previewConfig.mainPhotoFit || config.mainPhotoFit || "cover",
       mainPhotoPosition: config.mainPhotoPosition || "50% 50%",
       groomFather: "김아빠", groomMother: "이엄마", groomRelation: "차남", groomPhone: "010-1234-5678",
       brideFather: "이아빠", brideMother: "박엄마", brideRelation: "장녀", bridePhone: "010-9876-5432",
@@ -1211,6 +1181,32 @@ ${fontCatalogText}
                       </button>
                     </div>
                   </div>
+                  {TEXT_PICKER_META[pickedTextKey].readabilityKey && (
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center gap-2">
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase">{TEXT_PICKER_META[pickedTextKey].readabilityLabel || "가독성"}</span>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={clampReadabilityValue(config[TEXT_PICKER_META[pickedTextKey].readabilityKey] ?? 0)}
+                            onChange={(e) => updateConfig({ [TEXT_PICKER_META[pickedTextKey].readabilityKey]: clampReadabilityValue(e.target.value) })}
+                            className="w-14 py-1.5 px-2 border border-zinc-200 rounded-lg text-xs font-mono text-right"
+                          />
+                          <span className="text-[10px] font-bold text-zinc-400">%</span>
+                        </div>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={clampReadabilityValue(config[TEXT_PICKER_META[pickedTextKey].readabilityKey] ?? 0)}
+                        onChange={(e) => updateConfig({ [TEXT_PICKER_META[pickedTextKey].readabilityKey]: clampReadabilityValue(e.target.value) })}
+                        className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-900"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
               <button
@@ -1223,10 +1219,12 @@ ${fontCatalogText}
               {showAdvancedTypography && (
                 <div className="space-y-4">
                   {[
-                    { label: "제목 크기", key: "titleSize", min: 20, max: 80 },
-                    { label: "이름 크기", key: "namesSize", min: 16, max: 60 },
-                    { label: "Save The Date 크기", key: "saveTheDateSize", min: 8, max: 24 },
-                    { label: "날짜 크기", key: "dateSize", min: 10, max: 30 },
+                    { label: "제목 크기", key: "titleSize", min: 20, max: 80, readabilityKey: "heroTitleReadability", readabilityLabel: "제목 가독성" },
+                    { label: "이름 크기", key: "namesSize", min: 16, max: 60, readabilityKey: "heroNamesReadability", readabilityLabel: "이름 가독성" },
+                    { label: "Save The Date 크기", key: "saveTheDateSize", min: 8, max: 24, readabilityKey: "saveTheDateReadability", readabilityLabel: "Save The Date 가독성" },
+                    { label: "날짜 크기", key: "dateSize", min: 10, max: 30, readabilityKey: "heroDateReadability", readabilityLabel: "날짜 가독성" },
+                    { label: "히어로 예식장명 크기", key: "heroVenueNameSize", min: 12, max: 40, readabilityKey: "heroVenueReadability", readabilityLabel: "예식장명 가독성" },
+                    { label: "D-day 배지 크기", key: "heroDDaySize", min: 8, max: 24, readabilityKey: "heroDdayReadability", readabilityLabel: "D-day 가독성" },
                     { label: "본문 크기", key: "contentSize", min: 12, max: 40 },
                   ].map((c) => {
                     const val = config[c.key] ?? defaultConfig[c.key];
@@ -1241,6 +1239,32 @@ ${fontCatalogText}
                           </div>
                         </div>
                         <input type="range" min={c.min} max={c.max} value={val} onChange={(e) => updateConfig({ [c.key]: Number(e.target.value) })} className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-900" />
+                        {c.readabilityKey && (
+                          <div className="space-y-2 pt-1">
+                            <div className="flex justify-between items-center gap-2">
+                              <span className="text-[10px] font-bold text-zinc-500 uppercase">{c.readabilityLabel}</span>
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  value={clampReadabilityValue(config[c.readabilityKey] ?? 0)}
+                                  onChange={(e) => updateConfig({ [c.readabilityKey]: clampReadabilityValue(e.target.value) })}
+                                  className="w-14 py-1.5 px-2 border border-zinc-200 rounded-lg text-xs font-mono text-right"
+                                />
+                                <span className="text-[10px] font-bold text-zinc-400">%</span>
+                              </div>
+                            </div>
+                            <input
+                              type="range"
+                              min={0}
+                              max={100}
+                              value={clampReadabilityValue(config[c.readabilityKey] ?? 0)}
+                              onChange={(e) => updateConfig({ [c.readabilityKey]: clampReadabilityValue(e.target.value) })}
+                              className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-900"
+                            />
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1271,6 +1295,8 @@ ${fontCatalogText}
                       { label: "Location 제목", key: "locationTitleSize", min: 8, max: 32 },
                       { label: "Account 제목", key: "accountTitleSize", min: 8, max: 32 },
                       { label: "참석 여부 제목", key: "attendanceTitleSize", min: 8, max: 32 },
+                      { label: "알림사항 제목", key: "noticeTitleSize", min: 8, max: 32 },
+                      { label: "알림사항 본문", key: "noticeContentSize", min: 10, max: 32 },
                     ].map((c) => {
                       const val = config[c.key] ?? defaultConfig[c.key];
                       const clamp = (n) => Math.max(c.min, Math.min(c.max, Number(n) || c.min));
@@ -1497,7 +1523,8 @@ ${fontCatalogText}
                   <div className="absolute inset-0 overflow-y-auto hide-scrollbar" style={{ backgroundColor: config.bgColor || "#ffffff" }}>
                     <InvitationView
                       template={template}
-                      isPreview={true}
+                      isPreview
+                      compactPreview={String(previewData?.config?.imageStyle || "standard") === "full"}
                       onSelectSection={(id) => { setSelectedElement(id); const el = document.getElementById(`control-${id}`); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); }}
                       activeSection={selectedElement}
                       onTextSizePick={setPickedTextKey}
@@ -1515,7 +1542,7 @@ ${fontCatalogText}
                 <div className="w-full max-w-[800px] shadow-2xl overflow-hidden" style={{ backgroundColor: config.bgColor || "#ffffff" }}>
                   <InvitationView
                     template={template}
-                    isPreview={true}
+                    isPreview
                     previewUseLivePhotoLayout
                     onSelectSection={(id) => { setSelectedElement(id); const el = document.getElementById(`control-${id}`); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); }}
                     activeSection={selectedElement}
@@ -1596,10 +1623,11 @@ ${fontCatalogText}
                   mainPhotoUrl: displayPhotoUrl,
                   dDayEnabled: true, navigationEnabled: true,
                   albumPhotos: [], bankAccounts: [],
-                  mainPhotoFit: "cover",
+                  mainPhotoFit: resolvedSkinConfig.mainPhotoFit || skinConfig.mainPhotoFit || "cover",
                   mainPhotoPosition: skinConfig.mainPhotoPosition || "50% 50%",
                   config: { ...getTypoForTemplate(skin.slug), ...resolvedSkinConfig, mainPhotoZoom: skinConfig.mainPhotoZoom ?? 100, mainPhotoAspectRatio: skinConfig.mainPhotoAspectRatio ?? 1 },
                 };
+                const libraryImageStyle = String(sampleData?.config?.imageStyle || "standard").toLowerCase();
                 return (
                   <div
                     key={skin.id}
@@ -1620,10 +1648,9 @@ ${fontCatalogText}
                             <InvitationView
                               data={sampleData}
                               template={skin.slug}
-                              isPreview={false}
                               compactPreview
                               enableMainPhotoLightbox={false}
-                              disableMainPhotoOverlay={String(sampleData?.config?.imageStyle || "standard") !== "full"}
+                              disableMainPhotoOverlay={libraryImageStyle !== "full"}
                               forceFullImageDarken
                             />
                           </div>

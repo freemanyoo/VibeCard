@@ -3,6 +3,9 @@ package com.wedding.api.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 @Entity
 @Getter
@@ -34,4 +37,9 @@ public class Skin {
 
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    @OneToMany(mappedBy = "skin")
+    @Builder.Default
+    @JsonIgnore
+    private List<Invitation> invitations = new ArrayList<>();
 }
