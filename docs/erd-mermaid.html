@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VibeCard ERD Mermaid</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+      overflow: hidden;
+    }
+    .wrap {
+      max-width: 1800px;
+      margin: 0 auto;
+      padding: 12px;
+      height: 100vh;
+    }
+    .panel {
+      background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+      border: 1px solid #cbd5e1;
+      border-radius: 18px;
+      padding: 12px;
+      box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
+      height: calc(100vh - 24px);
+    }
+    .render {
+      height: 100%;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    .render svg {
+      width: 100%;
+      height: 100%;
+      max-width: 100%;
+      max-height: 100%;
+    }
+    .render .mermaid {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform: scale(1.08);
+      transform-origin: center center;
+    }
+    .render .mermaid svg {
+      filter: drop-shadow(0 8px 20px rgba(15, 23, 42, 0.08));
+    }
+    .source {
+      position: absolute;
+      inset: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: 12px;
+      padding: 16px;
+      display: none;
+    }
+    .error .source {
+      display: block;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel render" id="renderPanel">
+      <pre class="mermaid" id="mermaidBlock">erDiagram
+    USERS ||--o{ INVITATION : owns
+    USERS ||--o{ MEDIA_FILES : uploads
+    USERS ||--o{ AI_GENERATION_HISTORY : creates
+    USERS ||--o{ AI_PROMPT_BLOCK_LOGS : triggers
+    USERS ||--|| REFRESH_TOKENS : has
+
+    SKIN ||--o{ INVITATION : applies
+
+    INVITATION ||--o{ BANK_ACCOUNT : has
+    INVITATION ||--o{ ATTENDANCE : has
+    INVITATION ||--o{ GUESTBOOK : has
+
+    MEDIA_FILES ||--o{ AI_GENERATION_HISTORY : source
+
+    USERS {
+        uuid id PK
+        string email UK
+        string password
+        string provider
+        string provider_id
+        string role
+        datetime created_at
+    }
+
+    REFRESH_TOKENS {
+        bigint id PK
+        string token UK
+        uuid user_id FK
+        datetime expiry_date
+    }
+
+    SKIN {
+        uuid id PK
+        string name
+        string slug UK
+        string description
+        string config
+        string thumbnail
+        boolean is_active
+        datetime created_at
+    }
+
+    INVITATION {
+        uuid id PK
+        string slug UK
+        uuid user_id FK
+        uuid skin_id FK
+        string groom_name
+        string bride_name
+        datetime wedding_date
+        string venue_name
+        string venue_address
+        string main_photo_url
+        string main_photo_fit
+        string main_photo_position
+        string template
+        string invitation_title
+        string invitation_message
+        string groom_father
+        string groom_mother
+        string groom_relation
+        string groom_phone
+        string groom_father_phone
+        string groom_mother_phone
+        string bride_father
+        string bride_mother
+        string bride_relation
+        string bride_phone
+        string bride_father_phone
+        string bride_mother_phone
+        string album_photos
+        string config
+        boolean is_published
+        string youtube_url
+        string bgm_url
+        string notice_title
+        string notice_content
+        boolean d_day_enabled
+        boolean navigation_enabled
+        datetime created_at
+    }
+
+    BANK_ACCOUNT {
+        bigint id PK
+        uuid invitation_id FK
+        string owner_type
+        string bank_name
+        string account_number
+        string owner_name
+    }
+
+    ATTENDANCE {
+        bigint id PK
+        uuid invitation_id FK
+        string name
+        string side
+        boolean attending
+        int count
+        boolean meal
+        int meal_count
+        string message
+        datetime created_at
+    }
+
+    GUESTBOOK {
+        bigint id PK
+        uuid invitation_id FK
+        string writer_name
+        string content
+        datetime created_at
+    }
+
+    MEDIA_FILES {
+        uuid id PK
+        uuid user_id FK
+        string storage_mode
+        string original_bucket
+        string original_object_key
+        string original_url
+        string thumb_bucket
+        string thumb_object_key
+        string thumb_url
+        string analysis_bucket
+        string analysis_object_key
+        string analysis_url
+        string mime_type
+        int width
+        int height
+        bigint file_size
+        datetime created_at
+    }
+
+    AI_GENERATION_HISTORY {
+        uuid id PK
+        uuid user_id FK
+        uuid source_image_id FK
+        string source_image_url
+        string type
+        string provider
+        string result_summary
+        string config_patch_json
+        datetime created_at
+    }
+
+    AI_PROMPT_BLOCK_LOGS {
+        uuid id PK
+        uuid user_id FK
+        string user_email
+        string prompt
+        string reason
+        datetime created_at
+    }</pre>
+      <div class="source" id="sourceBlock"></div>
+    </div>
+  </div>
+  <script>
+    const code = document.getElementById("mermaidBlock").textContent;
+    const sourceBlock = document.getElementById("sourceBlock");
+    sourceBlock.textContent = code;
+    try {
+      mermaid.initialize({
+        startOnLoad: true,
+        securityLevel: "loose",
+        theme: "base",
+        themeVariables: {
+          background: "#f8fafc",
+          primaryColor: "#ffffff",
+          primaryTextColor: "#0f172a",
+          primaryBorderColor: "#475569",
+          lineColor: "#475569",
+          tertiaryColor: "#eff6ff",
+          mainBkg: "#ffffff",
+          secondBkg: "#e0f2fe",
+          tertiaryBkg: "#fef3c7",
+          textColor: "#0f172a",
+          fontFamily: "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+          fontSize: "14px"
+        },
+        er: {
+          diagramPadding: 16,
+          layoutDirection: "TB",
+          minEntityWidth: 240,
+          minEntityHeight: 44,
+          entityPadding: 12,
+          stroke: "#475569",
+          fill: "#ffffff",
+          fontSize: 14
+        }
+      });
+    } catch (e) {
+      document.getElementById("renderPanel").classList.add("error");
+    }
+  </script>
+</body>
+</html>

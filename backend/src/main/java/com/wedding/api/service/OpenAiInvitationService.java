@@ -176,6 +176,7 @@ public class OpenAiInvitationService {
                     throw new IllegalStateException("현재 저장소 유형은 fallback 분석을 지원하지 않습니다.", uploadError);
                 }
             }
+            enforceFullImageHeroContrast(analysis.configPatch(), normalizedStyle);
             return AiInvitationImageResponse.builder()
                 .success(true)
                 .analysisSummary(analysis.summary())
@@ -244,6 +245,7 @@ public class OpenAiInvitationService {
                 analysis = analyzePromptOnly(alias, normalizedStyle, resolvedToken, trimmedPrompt);
             }
 
+            enforceFullImageHeroContrast(analysis.configPatch(), normalizedStyle);
             return AiInvitationImageResponse.builder()
                 .success(true)
                 .analysisSummary(analysis.summary())
@@ -559,9 +561,12 @@ public class OpenAiInvitationService {
             - subBgColor: hex color
             - textColor: hex color
             - pointColor: hex color
+            - saveTheDateColor: hex color
             - titleColor: hex color
             - nameColor: hex color
             - dateColor: hex color
+            - heroVenueColor: hex color
+            - heroDdayColor: hex color
             - messageColor: hex color
             - sectionTitleColor: hex color
             - calendarBgColor: hex color
@@ -571,6 +576,7 @@ public class OpenAiInvitationService {
             - calendarDaySize: integer
             - buttonColor: hex color
             - buttonTextColor: hex color
+            - footerColor: hex color
             Rules:
             - Keep the uploaded photo as the main image. Do not generate a replacement image.
             - First understand the photo in detail before choosing colors.
@@ -587,10 +593,19 @@ public class OpenAiInvitationService {
             - sunset or night photo -> warm dramatic or deep elegant palette.
             - The color palette must be intentionally derived from the actual image, not generic.
             - Match colors to the photo's real dominant hues, lighting, depth, and emotional tone.
+            - Do not simply copy the exact dominant photo color into every UI field.
+            - The palette should harmonize with the photo, not look like a literal color-picked clone of the photo.
+            - You may reinterpret the scene using analogous, complementary, split-complementary, triadic, or muted luxury harmony if it suits the image better.
+            - Prefer combinations that feel refined and intentional, even when they are not the exact same color as the dress, sky, bouquet, or wall.
+            - Keep at least one connection to the scene mood, but allow supportive accent colors that are more elegant than a raw sampled photo color.
             - If the background is vivid, keep readability high with a controlled premium contrast.
             - If the photo feels luxurious, use more sophisticated, darker, cleaner, richer tones.
             - If the photo feels natural or bright, use softer, cleaner, airier tones.
             - The design must clearly react to the uploaded photo. Avoid a generic neutral palette unless the photo itself is visually neutral.
+            - Even when one representative main color leads the design, the structured palette must still contain clearly differentiated roles: light surface, secondary surface, deep text, primary accent, and one richer supporting accent.
+            - Avoid collapsing bgColor, subBgColor, pointColor, buttonColor, calendarActiveColor, and footerColor into the same or near-identical HEX values unless the photo is genuinely monochrome.
+            - If the image contains flowers, foliage, bouquet accents, sunset light, sea blue, city lighting, or venue interior highlights, allow those visible secondary hues to appear in saveTheDateColor, heroVenueColor, heroDdayColor, footerColor, or calendar colors.
+            - Use at least one stronger accent color for pointColor, buttonColor, or heroDdayColor so the result does not feel flat or overly conservative.
             - Summary must reflect the actual visual mood, not a generic wedding phrase.
             - analysisSummary must focus first on the visible people action, pose, distance, and interaction, then describe the surrounding background or venue.
             - analysisSummary should mention concrete visible details before abstract mood words.
@@ -603,7 +618,7 @@ public class OpenAiInvitationService {
             - colorStrategy must use an emotional Korean color name that fits the actual image.
             - colorStrategy must cite only the single most relevant visual cue from the photo and explain briefly why that one color is the best main color using Adobe Color style harmony logic.
             - colorStrategy must briefly explain the design direction in a compact way. Keep it clearly shorter than analysisSummary.
-            - The structured color fields (bgColor, subBgColor, textColor, pointColor, titleColor, nameColor, dateColor, messageColor, sectionTitleColor, calendarBgColor, calendarDayColor, calendarActiveColor, buttonColor, buttonTextColor) must still be valid HEX colors derived from that representative color and its harmonious supporting tones.
+            - The structured color fields (bgColor, subBgColor, textColor, pointColor, saveTheDateColor, titleColor, nameColor, dateColor, heroVenueColor, heroDdayColor, messageColor, sectionTitleColor, calendarBgColor, calendarDayColor, calendarActiveColor, buttonColor, buttonTextColor, footerColor) must still be valid HEX colors derived from that representative color and its harmonious supporting tones.
             - The calendar colors and sizes must also be intentionally adjusted to match the detected scene. Do not leave the calendar styling generic.
             - calendarTitleSize must be an integer between 20 and 34.
             - calendarDaySize must be an integer between 11 and 18.
@@ -615,6 +630,14 @@ public class OpenAiInvitationService {
             - congratulatoryMessage must feel calm, elegant, warm, and polished, and it must be plain prose with no headings or labels.
             - Output only a raw JSON object with no markdown, no code fences, and no extra explanation.
             """.formatted(styleLabel);
+        if ("full".equals(imageStyle)) {
+            prompt += """
+
+                - For full-photo layouts, hero text placed over the image must remain highly readable.
+                - In full-photo layouts, prefer white or near-white hero text and avoid low-contrast mid-tone hero colors.
+                - In full-photo layouts, assume the photo needs a strong enough dark overlay behind the hero text.
+                """;
+        }
         String extra = clean(extraPrompt);
         if (!extra.isBlank()) {
             prompt += """
@@ -664,9 +687,12 @@ public class OpenAiInvitationService {
             - subBgColor: hex color
             - textColor: hex color
             - pointColor: hex color
+            - saveTheDateColor: hex color
             - titleColor: hex color
             - nameColor: hex color
             - dateColor: hex color
+            - heroVenueColor: hex color
+            - heroDdayColor: hex color
             - messageColor: hex color
             - sectionTitleColor: hex color
             - calendarBgColor: hex color
@@ -676,10 +702,20 @@ public class OpenAiInvitationService {
             - calendarDaySize: integer
             - buttonColor: hex color
             - buttonTextColor: hex color
+            - footerColor: hex color
             Rules:
             - Treat the visual analysis below as the only photo source.
             - Keep the uploaded photo as the main image. Do not generate a replacement image.
             - Derive the palette from the described scene and the single strongest color cue.
+            - Do not simply copy the exact dominant photo color into every UI field.
+            - The palette should harmonize with the described scene, not look like a literal color-picked clone of the photo.
+            - You may reinterpret the scene using analogous, complementary, split-complementary, triadic, or muted luxury harmony if it suits the image better.
+            - Prefer combinations that feel refined and intentional, even when they are not the exact same color as the dress, sky, bouquet, or wall.
+            - Keep at least one connection to the scene mood, but allow supportive accent colors that are more elegant than a raw sampled photo color.
+            - Even when one representative main color leads the design, the structured palette must still contain clearly differentiated roles: light surface, secondary surface, deep text, primary accent, and one richer supporting accent.
+            - Avoid collapsing bgColor, subBgColor, pointColor, buttonColor, calendarActiveColor, and footerColor into the same or near-identical HEX values unless the scene is genuinely monochrome.
+            - If the described image includes flowers, foliage, bouquet accents, sunset light, sea blue, city lighting, or venue highlights, allow those secondary hues to appear in saveTheDateColor, heroVenueColor, heroDdayColor, footerColor, or calendar colors.
+            - Use at least one stronger accent color for pointColor, buttonColor, or heroDdayColor so the result does not feel flat or overly conservative.
             - analysisSummary must focus first on the visible people action, pose, distance, and interaction, then describe the surrounding background or venue.
             - analysisSummary should mention concrete visible details before abstract mood words.
             - analysisSummary may mention overall light or mood only in one short supporting phrase if truly necessary.
@@ -691,7 +727,7 @@ public class OpenAiInvitationService {
             - colorStrategy must use an emotional Korean color name and explain the choice using the provided visual analysis as the source of truth.
             - colorStrategy must reference only the single most relevant described element and explain briefly why that one color is the best main color using Adobe Color style harmony logic.
             - colorStrategy must briefly explain the design direction in a compact way. Keep it clearly shorter than analysisSummary.
-            - The structured color fields (bgColor, subBgColor, textColor, pointColor, titleColor, nameColor, dateColor, messageColor, sectionTitleColor, calendarBgColor, calendarDayColor, calendarActiveColor, buttonColor, buttonTextColor) must still be valid HEX colors derived from that representative color and its harmonious supporting tones.
+            - The structured color fields (bgColor, subBgColor, textColor, pointColor, saveTheDateColor, titleColor, nameColor, dateColor, heroVenueColor, heroDdayColor, messageColor, sectionTitleColor, calendarBgColor, calendarDayColor, calendarActiveColor, buttonColor, buttonTextColor, footerColor) must still be valid HEX colors derived from that representative color and its harmonious supporting tones.
             - The calendar colors and sizes must also be intentionally adjusted to match the detected scene. Do not leave the calendar styling generic.
             - calendarTitleSize must be an integer between 20 and 34.
             - calendarDaySize must be an integer between 11 and 18.
@@ -703,6 +739,14 @@ public class OpenAiInvitationService {
             %s
             """.formatted(styleLabel, clean(visionContext));
 
+        if ("full".equals(imageStyle)) {
+            prompt += """
+
+                - For full-photo layouts, hero text placed over the image must remain highly readable.
+                - In full-photo layouts, prefer white or near-white hero text and avoid low-contrast mid-tone hero colors.
+                - In full-photo layouts, assume the photo needs a strong enough dark overlay behind the hero text.
+                """;
+        }
         String extra = clean(extraPrompt);
         if (!extra.isBlank()) {
             prompt += """
@@ -839,9 +883,12 @@ public class OpenAiInvitationService {
         putColor(configPatch, "subBgColor", parsed.path("subBgColor").asText(""));
         putColor(configPatch, "textColor", parsed.path("textColor").asText(""));
         putColor(configPatch, "pointColor", parsed.path("pointColor").asText(""));
+        putColor(configPatch, "saveTheDateColor", parsed.path("saveTheDateColor").asText(""));
         putColor(configPatch, "titleColor", parsed.path("titleColor").asText(""));
         putColor(configPatch, "nameColor", parsed.path("nameColor").asText(""));
         putColor(configPatch, "dateColor", parsed.path("dateColor").asText(""));
+        putColor(configPatch, "heroVenueColor", parsed.path("heroVenueColor").asText(""));
+        putColor(configPatch, "heroDdayColor", parsed.path("heroDdayColor").asText(""));
         putColor(configPatch, "messageColor", parsed.path("messageColor").asText(""));
         putColor(configPatch, "sectionTitleColor", parsed.path("sectionTitleColor").asText(""));
         putColor(configPatch, "calendarBgColor", parsed.path("calendarBgColor").asText(""));
@@ -849,9 +896,8 @@ public class OpenAiInvitationService {
         putColor(configPatch, "calendarActiveColor", parsed.path("calendarActiveColor").asText(""));
         putColor(configPatch, "buttonColor", parsed.path("buttonColor").asText(""));
         putColor(configPatch, "buttonTextColor", parsed.path("buttonTextColor").asText(""));
-        if (configPatch.isEmpty()) {
-            configPatch.putAll(defaultPaletteForScene(sceneType));
-        }
+        putColor(configPatch, "footerColor", parsed.path("footerColor").asText(""));
+        applyDerivedColorDefaults(configPatch, sceneType);
         putIntInRange(configPatch, "calendarTitleSize", parsed.path("calendarTitleSize").asText(""), 20, 34);
         putIntInRange(configPatch, "calendarDaySize", parsed.path("calendarDaySize").asText(""), 11, 18);
         applyDerivedCalendarDefaults(configPatch, sceneType);
@@ -1340,80 +1386,100 @@ public class OpenAiInvitationService {
                 Map.entry("subBgColor", "#DCEBDD"),
                 Map.entry("textColor", "#1F3527"),
                 Map.entry("pointColor", "#4C8B5F"),
+                Map.entry("saveTheDateColor", "#6FA37B"),
                 Map.entry("titleColor", "#1F3527"),
                 Map.entry("nameColor", "#254330"),
                 Map.entry("dateColor", "#426A4D"),
+                Map.entry("heroVenueColor", "#355940"),
+                Map.entry("heroDdayColor", "#5C8F63"),
                 Map.entry("messageColor", "#32523B"),
                 Map.entry("sectionTitleColor", "#2E5A3A"),
                 Map.entry("calendarBgColor", "#DCEBDD"),
                 Map.entry("calendarDayColor", "#1F3527"),
                 Map.entry("calendarActiveColor", "#4C8B5F"),
                 Map.entry("buttonColor", "#315F3D"),
-                Map.entry("buttonTextColor", "#FFFFFF")
+                Map.entry("buttonTextColor", "#FFFFFF"),
+                Map.entry("footerColor", "#557060")
             );
             case "sea" -> Map.ofEntries(
                 Map.entry("bgColor", "#EEF7FB"),
                 Map.entry("subBgColor", "#D9ECF6"),
                 Map.entry("textColor", "#16394F"),
                 Map.entry("pointColor", "#3A84B8"),
+                Map.entry("saveTheDateColor", "#68A9D2"),
                 Map.entry("titleColor", "#16394F"),
                 Map.entry("nameColor", "#1D4E6F"),
                 Map.entry("dateColor", "#4A7391"),
+                Map.entry("heroVenueColor", "#2E668A"),
+                Map.entry("heroDdayColor", "#2E6F9B"),
                 Map.entry("messageColor", "#32566F"),
                 Map.entry("sectionTitleColor", "#2E668A"),
                 Map.entry("calendarBgColor", "#D9ECF6"),
                 Map.entry("calendarDayColor", "#16394F"),
                 Map.entry("calendarActiveColor", "#3A84B8"),
                 Map.entry("buttonColor", "#2E6F9B"),
-                Map.entry("buttonTextColor", "#FFFFFF")
+                Map.entry("buttonTextColor", "#FFFFFF"),
+                Map.entry("footerColor", "#5A7687")
             );
             case "hotel", "luxury" -> Map.ofEntries(
                 Map.entry("bgColor", "#F6F0E7"),
                 Map.entry("subBgColor", "#E8DBC6"),
                 Map.entry("textColor", "#2B221A"),
                 Map.entry("pointColor", "#B28A4A"),
+                Map.entry("saveTheDateColor", "#C7A76A"),
                 Map.entry("titleColor", "#2B221A"),
                 Map.entry("nameColor", "#3A2E21"),
                 Map.entry("dateColor", "#7A6240"),
+                Map.entry("heroVenueColor", "#6B5336"),
+                Map.entry("heroDdayColor", "#9A753C"),
                 Map.entry("messageColor", "#4B3B2B"),
                 Map.entry("sectionTitleColor", "#60492F"),
                 Map.entry("calendarBgColor", "#E8DBC6"),
                 Map.entry("calendarDayColor", "#2B221A"),
                 Map.entry("calendarActiveColor", "#B28A4A"),
                 Map.entry("buttonColor", "#8D6B36"),
-                Map.entry("buttonTextColor", "#FFFFFF")
+                Map.entry("buttonTextColor", "#FFFFFF"),
+                Map.entry("footerColor", "#7A6654")
             );
             case "garden", "floral" -> Map.ofEntries(
                 Map.entry("bgColor", "#FBF4F7"),
                 Map.entry("subBgColor", "#F5E3EA"),
                 Map.entry("textColor", "#4A2A35"),
                 Map.entry("pointColor", "#C97A96"),
+                Map.entry("saveTheDateColor", "#D98FAA"),
                 Map.entry("titleColor", "#4A2A35"),
                 Map.entry("nameColor", "#5A3341"),
                 Map.entry("dateColor", "#8F5A6D"),
+                Map.entry("heroVenueColor", "#7A4F60"),
+                Map.entry("heroDdayColor", "#B56785"),
                 Map.entry("messageColor", "#6F4656"),
                 Map.entry("sectionTitleColor", "#7E4C5F"),
                 Map.entry("calendarBgColor", "#F5E3EA"),
                 Map.entry("calendarDayColor", "#4A2A35"),
                 Map.entry("calendarActiveColor", "#C97A96"),
                 Map.entry("buttonColor", "#B56785"),
-                Map.entry("buttonTextColor", "#FFFFFF")
+                Map.entry("buttonTextColor", "#FFFFFF"),
+                Map.entry("footerColor", "#8A6878")
             );
             default -> Map.ofEntries(
                 Map.entry("bgColor", "#F8F7F4"),
                 Map.entry("subBgColor", "#EEEAE3"),
                 Map.entry("textColor", "#2A2A2A"),
                 Map.entry("pointColor", "#8B6E5A"),
+                Map.entry("saveTheDateColor", "#A3816A"),
                 Map.entry("titleColor", "#2A2A2A"),
                 Map.entry("nameColor", "#333333"),
                 Map.entry("dateColor", "#6C6259"),
+                Map.entry("heroVenueColor", "#5A5048"),
+                Map.entry("heroDdayColor", "#7A634F"),
                 Map.entry("messageColor", "#4A433D"),
                 Map.entry("sectionTitleColor", "#5A5048"),
                 Map.entry("calendarBgColor", "#EEEAE3"),
                 Map.entry("calendarDayColor", "#2A2A2A"),
                 Map.entry("calendarActiveColor", "#8B6E5A"),
                 Map.entry("buttonColor", "#6E5847"),
-                Map.entry("buttonTextColor", "#FFFFFF")
+                Map.entry("buttonTextColor", "#FFFFFF"),
+                Map.entry("footerColor", "#7A7068")
             );
         };
     }
@@ -1460,6 +1526,85 @@ public class OpenAiInvitationService {
         }
     }
 
+    private void putIntAtLeast(Map<String, Object> target, String key, int floor, int min, int max) {
+        int resolved = floor;
+        Object raw = target.get(key);
+        if (raw instanceof Number number) {
+            resolved = Math.max(floor, number.intValue());
+        } else if (raw != null) {
+            try {
+                resolved = Math.max(floor, Integer.parseInt(clean(raw.toString())));
+            } catch (NumberFormatException ignored) {
+                resolved = floor;
+            }
+        }
+        target.put(key, Math.max(min, Math.min(max, resolved)));
+    }
+
+    private void applyDerivedColorDefaults(Map<String, Object> configPatch, String sceneType) {
+        Map<String, Object> defaults = defaultPaletteForScene(sceneType);
+        configPatch.putIfAbsent("bgColor", defaults.get("bgColor"));
+        configPatch.putIfAbsent("subBgColor", defaults.get("subBgColor"));
+        configPatch.putIfAbsent("textColor", defaults.get("textColor"));
+        configPatch.putIfAbsent("pointColor", defaults.get("pointColor"));
+        configPatch.putIfAbsent("titleColor", configPatch.getOrDefault("textColor", defaults.get("titleColor")));
+        configPatch.putIfAbsent("nameColor", defaults.get("nameColor"));
+        configPatch.putIfAbsent("dateColor", defaults.get("dateColor"));
+        configPatch.putIfAbsent("messageColor", defaults.get("messageColor"));
+        configPatch.putIfAbsent("sectionTitleColor", defaults.get("sectionTitleColor"));
+        configPatch.putIfAbsent("buttonColor", defaults.get("buttonColor"));
+        configPatch.putIfAbsent("buttonTextColor", defaults.get("buttonTextColor"));
+        configPatch.putIfAbsent("saveTheDateColor", configPatch.getOrDefault("pointColor", defaults.get("saveTheDateColor")));
+        configPatch.putIfAbsent("heroVenueColor", configPatch.getOrDefault("sectionTitleColor", defaults.get("heroVenueColor")));
+        configPatch.putIfAbsent("heroDdayColor", configPatch.getOrDefault("buttonColor", defaults.get("heroDdayColor")));
+        configPatch.putIfAbsent("footerColor", defaults.get("footerColor"));
+    }
+
+    private void enforceFullImageHeroContrast(Map<String, Object> configPatch, String imageStyle) {
+        if (!"full".equals(normalizeImageStyle(imageStyle))) {
+            return;
+        }
+        String tintedSaveTheDate = liftHeroAccentColor(
+            configPatch.get("saveTheDateColor"),
+            configPatch.get("pointColor"),
+            "#EFD8B4",
+            0.78
+        );
+        String tintedDate = liftHeroAccentColor(
+            configPatch.get("dateColor"),
+            configPatch.get("textColor"),
+            "#E8E2D8",
+            0.82
+        );
+        String tintedVenue = liftHeroAccentColor(
+            configPatch.get("heroVenueColor"),
+            configPatch.get("sectionTitleColor"),
+            "#E7DED4",
+            0.8
+        );
+        String tintedDday = liftHeroAccentColor(
+            configPatch.get("heroDdayColor"),
+            configPatch.get("buttonColor"),
+            "#F0D3A4",
+            0.68
+        );
+        configPatch.put("heroTextColorMode", "custom");
+        configPatch.put("saveTheDateColor", tintedSaveTheDate);
+        configPatch.put("titleColor", "#FFFFFF");
+        configPatch.put("nameColor", "#FFFDF8");
+        configPatch.put("dateColor", tintedDate);
+        configPatch.put("heroVenueColor", tintedVenue);
+        configPatch.put("heroDdayColor", tintedDday);
+        putIntAtLeast(configPatch, "fullImageGradient", 72, 0, 100);
+        putIntAtLeast(configPatch, "bottomImageGradient", 36, 0, 100);
+        putIntAtLeast(configPatch, "saveTheDateReadability", 60, 0, 100);
+        putIntAtLeast(configPatch, "heroTitleReadability", 72, 0, 100);
+        putIntAtLeast(configPatch, "heroNamesReadability", 76, 0, 100);
+        putIntAtLeast(configPatch, "heroDateReadability", 72, 0, 100);
+        putIntAtLeast(configPatch, "heroVenueReadability", 76, 0, 100);
+        putIntAtLeast(configPatch, "heroDdayReadability", 82, 0, 100);
+    }
+
     private void applyDerivedCalendarDefaults(Map<String, Object> configPatch, String sceneType) {
         Map<String, Object> defaults = defaultPaletteForScene(sceneType);
         configPatch.putIfAbsent("calendarBgColor", configPatch.getOrDefault("subBgColor", defaults.get("calendarBgColor")));
@@ -1484,6 +1629,42 @@ public class OpenAiInvitationService {
             return ("#" + r + r + g + g + b + b).toUpperCase(Locale.ROOT);
         }
         return "";
+    }
+
+    private String liftHeroAccentColor(Object primary, Object fallback, String hardFallback, double mixWithWhite) {
+        String base = normalizeHexColor(primary == null ? "" : primary.toString());
+        if (base.isBlank()) {
+            base = normalizeHexColor(fallback == null ? "" : fallback.toString());
+        }
+        if (base.isBlank()) {
+            base = normalizeHexColor(hardFallback);
+        }
+        return mixHexColors(base, "#FFFFFF", mixWithWhite);
+    }
+
+    private String mixHexColors(String first, String second, double ratioToSecond) {
+        int[] a = parseHexColor(first);
+        int[] b = parseHexColor(second);
+        if (a == null || b == null) {
+            return normalizeHexColor(first);
+        }
+        double ratio = Math.max(0d, Math.min(1d, ratioToSecond));
+        int r = (int) Math.round(a[0] * (1d - ratio) + b[0] * ratio);
+        int g = (int) Math.round(a[1] * (1d - ratio) + b[1] * ratio);
+        int blue = (int) Math.round(a[2] * (1d - ratio) + b[2] * ratio);
+        return "#%02X%02X%02X".formatted(r, g, blue);
+    }
+
+    private int[] parseHexColor(String raw) {
+        String normalized = normalizeHexColor(raw);
+        if (normalized.isBlank()) {
+            return null;
+        }
+        return new int[] {
+            Integer.parseInt(normalized.substring(1, 3), 16),
+            Integer.parseInt(normalized.substring(3, 5), 16),
+            Integer.parseInt(normalized.substring(5, 7), 16)
+        };
     }
 
     private String resolveEndpoint(String modelAlias) {

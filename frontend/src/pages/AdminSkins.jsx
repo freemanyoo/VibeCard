@@ -18,6 +18,22 @@ const defaultConfig = {
   subBgColor: "#e2e8f0",
   textColor: "#0f172a",
   pointColor: "#475569",
+  showSaveTheDate: true,
+  heroTextOffsetX: 0,
+  heroTextOffsetY: 0,
+  heroSaveDateOffsetX: 0,
+  heroSaveDateOffsetY: 0,
+  heroTitleOffsetX: 0,
+  heroTitleOffsetY: 0,
+  heroNamesOffsetX: 0,
+  heroNamesOffsetY: 0,
+  reverseHeroNames: false,
+  heroDateOffsetX: 0,
+  heroDateOffsetY: 0,
+  heroVenueOffsetX: 0,
+  heroVenueOffsetY: 0,
+  heroDdayOffsetX: 0,
+  heroDdayOffsetY: 0,
   saveTheDateColor: "",
   heroVenueColor: "",
   heroDdayColor: "",
@@ -67,31 +83,37 @@ const defaultConfig = {
 };
 
 const TEXT_PICKER_META = {
-  titleSize: { label: "메인 제목", colorKey: "titleColor", fallbackColorKey: "textColor", min: 20, max: 80, textKey: "mainTitleText", textLabel: "제목 문구", readabilityKey: "heroTitleReadability", readabilityLabel: "제목 가독성" },
+  titleSize: { label: "메인 제목", colorKey: "titleColor", fallbackColorKey: "textColor", min: 20, max: 80, visibilityKey: "showHeroTitle", visibilityLabel: "메인 제목 표시", textKey: "mainTitleText", textLabel: "제목 문구", readabilityKey: "heroTitleReadability", readabilityLabel: "제목 가독성" },
   namesSize: {
     label: "신랑·신부 이름",
     colorKey: "nameColor",
     fallbackColorKey: "textColor",
     min: 16,
     max: 60,
+    visibilityKey: "showHeroNames",
+    visibilityLabel: "신랑·신부 이름 표시",
     readabilityKey: "heroNamesReadability",
     readabilityLabel: "이름 가독성",
     textFields: [
       { key: "groomDisplayName", label: "신랑 이름", placeholder: "신랑 이름" },
       { key: "brideDisplayName", label: "신부 이름", placeholder: "신부 이름" },
     ],
+    toggleKey: "reverseHeroNames",
+    toggleLabel: "이름 좌우 위치 바꾸기",
   },
-  dateSize: { label: "히어로 날짜/시간", colorKey: "dateColor", fallbackColorKey: "textColor", min: 10, max: 30, readabilityKey: "heroDateReadability", readabilityLabel: "날짜 가독성" },
-  saveTheDateSize: { label: "Save The Date", colorKey: "saveTheDateColor", fallbackColorKey: "pointColor", min: 8, max: 24, textKey: "saveTheDateText", textLabel: "문구", readabilityKey: "saveTheDateReadability", readabilityLabel: "Save The Date 가독성" },
-  heroVenueNameSize: { label: "히어로 예식장명", colorKey: "heroVenueColor", fallbackColorKey: "textColor", min: 12, max: 40, textKey: "venueDisplayName", textLabel: "예식장명 문구(공통)", readabilityKey: "heroVenueReadability", readabilityLabel: "예식장명 가독성" },
-  heroDDaySize: { label: "D-day 배지", colorKey: "heroDdayColor", fallbackColorKey: "buttonColor", min: 8, max: 24, readabilityKey: "heroDdayReadability", readabilityLabel: "D-day 가독성" },
-  contentSize: { label: "초대 메시지 본문", colorKey: "messageColor", fallbackColorKey: "textColor", min: 12, max: 40, textKey: "invitationBodyText", textLabel: "본문 문구" },
+  dateSize: { label: "히어로 날짜/시간", colorKey: "dateColor", fallbackColorKey: "textColor", min: 10, max: 30, visibilityKey: "showHeroDate", visibilityLabel: "히어로 날짜/시간 표시", readabilityKey: "heroDateReadability", readabilityLabel: "날짜 가독성" },
+  saveTheDateSize: { label: "Save The Date", colorKey: "saveTheDateColor", fallbackColorKey: "pointColor", min: 8, max: 24, visibilityKey: "showSaveTheDate", visibilityLabel: "Save The Date 표시", textKey: "saveTheDateText", textLabel: "문구", readabilityKey: "saveTheDateReadability", readabilityLabel: "Save The Date 가독성" },
+  heroVenueNameSize: { label: "히어로 예식장명", colorKey: "heroVenueColor", fallbackColorKey: "textColor", min: 12, max: 40, visibilityKey: "showHeroVenue", visibilityLabel: "히어로 예식장명 표시", textKey: "venueDisplayName", textLabel: "예식장명 문구(공통)", readabilityKey: "heroVenueReadability", readabilityLabel: "예식장명 가독성" },
+  heroDDaySize: { label: "D-day 배지", colorKey: "heroDdayColor", fallbackColorKey: "buttonColor", min: 8, max: 24, visibilityKey: "showHeroDday", visibilityLabel: "D-day 배지 표시", readabilityKey: "heroDdayReadability", readabilityLabel: "D-day 가독성" },
+  contentSize: { label: "초대 메시지 본문", colorKey: "messageColor", fallbackColorKey: "textColor", min: 12, max: 40, visibilityKey: "showInvitationMessage", visibilityLabel: "초대 메시지 표시", textKey: "invitationBodyText", textLabel: "본문 문구" },
   familyLineSize: {
     label: "가족 소개 이름행",
     colorKey: "textColor",
     fallbackColorKey: "textColor",
     min: 10,
     max: 30,
+    visibilityKey: "showFamilyInfo",
+    visibilityLabel: "가족 소개 표시",
     textFields: [
       { key: "groomFatherText", label: "신랑측 아버지", placeholder: "예: 김아빠" },
       { key: "groomMotherText", label: "신랑측 어머니", placeholder: "예: 이엄마" },
@@ -101,28 +123,28 @@ const TEXT_PICKER_META = {
       { key: "brideRelationText", label: "신부측 관계 문구", placeholder: "예: 장녀" },
     ],
   },
-  galleryTitleSize: { label: "Gallery 제목", colorKey: "sectionTitleColor", fallbackColorKey: "pointColor", min: 8, max: 32 },
-  locationTitleSize: { label: "Location 제목", colorKey: "sectionTitleColor", fallbackColorKey: "pointColor", min: 8, max: 32 },
-  locationVenueNameSize: { label: "Location 예식장명", colorKey: "textColor", fallbackColorKey: "textColor", min: 12, max: 48, textKey: "venueDisplayName", textLabel: "예식장명 문구(공통)" },
-  locationAddressSize: { label: "Location 주소", colorKey: "textColor", fallbackColorKey: "textColor", min: 10, max: 28 },
-  navButtonTextSize: { label: "내비 버튼 텍스트", colorKey: "buttonTextColor", fallbackColorKey: "buttonTextColor", min: 8, max: 20 },
-  accountTitleSize: { label: "Account 제목", colorKey: "sectionTitleColor", fallbackColorKey: "pointColor", min: 8, max: 32 },
-  accountSubtitleSize: { label: "Account 보조문구", colorKey: "textColor", fallbackColorKey: "textColor", min: 9, max: 24 },
+  galleryTitleSize: { label: "Gallery 제목", colorKey: "sectionTitleColor", fallbackColorKey: "pointColor", min: 8, max: 32, visibilityKey: "showGalleryTitle", visibilityLabel: "Gallery 제목 표시" },
+  locationTitleSize: { label: "Location 제목", colorKey: "sectionTitleColor", fallbackColorKey: "pointColor", min: 8, max: 32, visibilityKey: "showLocationTitle", visibilityLabel: "Location 제목 표시" },
+  locationVenueNameSize: { label: "Location 예식장명", colorKey: "textColor", fallbackColorKey: "textColor", min: 12, max: 48, visibilityKey: "showLocationVenue", visibilityLabel: "Location 예식장명 표시", textKey: "venueDisplayName", textLabel: "예식장명 문구(공통)" },
+  locationAddressSize: { label: "Location 주소", colorKey: "textColor", fallbackColorKey: "textColor", min: 10, max: 28, visibilityKey: "showLocationAddress", visibilityLabel: "Location 주소 표시" },
+  navButtonTextSize: { label: "내비 버튼 텍스트", colorKey: "buttonTextColor", fallbackColorKey: "buttonTextColor", min: 8, max: 20, visibilityKey: "showNavigationButtons", visibilityLabel: "내비 버튼 표시" },
+  accountTitleSize: { label: "Account 제목", colorKey: "sectionTitleColor", fallbackColorKey: "pointColor", min: 8, max: 32, visibilityKey: "showAccountTitle", visibilityLabel: "Account 제목 표시" },
+  accountSubtitleSize: { label: "Account 보조문구", colorKey: "textColor", fallbackColorKey: "textColor", min: 9, max: 24, visibilityKey: "showAccountSubtitle", visibilityLabel: "Account 보조문구 표시" },
   accountToggleLabelSize: { label: "계좌 토글(신랑측/신부측)", colorKey: "textColor", fallbackColorKey: "textColor", min: 9, max: 24 },
   accountHeaderSize: { label: "계좌 상단(은행/Copy)", colorKey: "textColor", fallbackColorKey: "textColor", min: 8, max: 24 },
   accountInfoSize: { label: "계좌 정보(번호/예금주)", colorKey: "textColor", fallbackColorKey: "textColor", min: 12, max: 36 },
-  attendanceTitleSize: { label: "참석 여부 제목", colorKey: "sectionTitleColor", fallbackColorKey: "pointColor", min: 8, max: 32 },
-  attendanceDescSize: { label: "참석 안내문", colorKey: "textColor", fallbackColorKey: "textColor", min: 10, max: 24 },
-  noticeTitleSize: { label: "알림사항 제목", colorKey: "sectionTitleColor", fallbackColorKey: "pointColor", min: 8, max: 32, textKey: "noticeTitleText", textLabel: "제목 문구" },
-  noticeContentSize: { label: "알림사항 본문", colorKey: "textColor", fallbackColorKey: "textColor", min: 10, max: 32, textKey: "noticeContentText", textLabel: "본문 문구" },
-  guestbookTitleSize: { label: "축하 메시지 제목", colorKey: "sectionTitleColor", fallbackColorKey: "pointColor", min: 8, max: 32 },
-  guestbookDescSize: { label: "축하 메시지 안내문", colorKey: "textColor", fallbackColorKey: "textColor", min: 10, max: 24 },
+  attendanceTitleSize: { label: "참석 여부 제목", colorKey: "sectionTitleColor", fallbackColorKey: "pointColor", min: 8, max: 32, visibilityKey: "showAttendanceTitle", visibilityLabel: "참석 여부 제목 표시" },
+  attendanceDescSize: { label: "참석 안내문", colorKey: "textColor", fallbackColorKey: "textColor", min: 10, max: 24, visibilityKey: "showAttendanceDesc", visibilityLabel: "참석 안내문 표시" },
+  noticeTitleSize: { label: "알림사항 제목", colorKey: "sectionTitleColor", fallbackColorKey: "pointColor", min: 8, max: 32, visibilityKey: "showNoticeTitle", visibilityLabel: "알림사항 제목 표시", textKey: "noticeTitleText", textLabel: "제목 문구" },
+  noticeContentSize: { label: "알림사항 본문", colorKey: "textColor", fallbackColorKey: "textColor", min: 10, max: 32, visibilityKey: "showNoticeContent", visibilityLabel: "알림사항 본문 표시", textKey: "noticeContentText", textLabel: "본문 문구" },
+  guestbookTitleSize: { label: "축하 메시지 제목", colorKey: "sectionTitleColor", fallbackColorKey: "pointColor", min: 8, max: 32, visibilityKey: "showGuestbookTitle", visibilityLabel: "축하 메시지 제목 표시" },
+  guestbookDescSize: { label: "축하 메시지 안내문", colorKey: "textColor", fallbackColorKey: "textColor", min: 10, max: 24, visibilityKey: "showGuestbookDesc", visibilityLabel: "축하 메시지 안내문 표시" },
   attendanceLabelSize: { label: "폼 라벨(성함/구분/참석여부/참석인원/식사여부/메모/작성자/메시지)", colorKey: "textColor", fallbackColorKey: "textColor", min: 9, max: 20 },
   attendanceOptionTextSize: { label: "참석 옵션", colorKey: "buttonTextColor", fallbackColorKey: "buttonTextColor", min: 10, max: 24 },
   formPlaceholderSize: { label: "폼 placeholder", colorKey: "textColor", fallbackColorKey: "textColor", min: 10, max: 24 },
-  calendarTitleSize: { label: "달력 제목", colorKey: "calendarDayColor", fallbackColorKey: "textColor", min: 16, max: 44 },
-  calendarDaySize: { label: "달력 날짜", colorKey: "calendarDayColor", fallbackColorKey: "textColor", min: 10, max: 26 },
-  footerWeddingOfSize: { label: "하단 Wedding of", colorKey: "footerColor", fallbackColorKey: "textColor", min: 8, max: 24 },
+  calendarTitleSize: { label: "달력 제목", colorKey: "calendarDayColor", fallbackColorKey: "textColor", min: 16, max: 44, visibilityKey: "showCalendarTitle", visibilityLabel: "달력 제목 표시" },
+  calendarDaySize: { label: "달력 날짜", colorKey: "calendarDayColor", fallbackColorKey: "textColor", min: 10, max: 26, visibilityKey: "showCalendarGrid", visibilityLabel: "달력 날짜 표시" },
+  footerWeddingOfSize: { label: "하단 Wedding of", colorKey: "footerColor", fallbackColorKey: "textColor", min: 8, max: 24, visibilityKey: "showFooterWeddingOf", visibilityLabel: "하단 Wedding of 표시" },
 };
 
 const TEXT_OVERRIDE_PLACEHOLDER = {
@@ -528,6 +550,7 @@ export default function AdminSkins() {
   const [aiLocalPurposeOptions, setAiLocalPurposeOptions] = useState(AI_LOCAL_PURPOSE_OPTIONS);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [pickedTextKey, setPickedTextKey] = useState(null);
+  const hiddenTextPickerItems = Object.entries(TEXT_PICKER_META).filter(([, meta]) => meta.visibilityKey && config[meta.visibilityKey] === false);
   const [showAdvancedTypography, setShowAdvancedTypography] = useState(false);
 
   // --- Photo Editor State & Refs ---
@@ -1107,10 +1130,42 @@ ${fontCatalogText}
                   className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-900"
                 />
               </div>
+              {hiddenTextPickerItems.length > 0 && (
+                <div className="space-y-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">숨겨진 항목</div>
+                  <div className="flex flex-wrap gap-2">
+                    {hiddenTextPickerItems.map(([key, meta]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPickedTextKey(key);
+                        }}
+                        className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[10px] font-bold text-zinc-700"
+                      >
+                        {meta.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {pickedTextKey && TEXT_PICKER_META[pickedTextKey] && (
                 <div className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
                   <div className="text-[10px] font-black text-zinc-500 uppercase">선택 항목: {TEXT_PICKER_META[pickedTextKey].label}</div>
                   <p className="text-[10px] text-zinc-400">입력칸을 비워두면 기본 문구를 사용합니다.</p>
+                  {TEXT_PICKER_META[pickedTextKey].visibilityKey && (
+                    <label className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2">
+                      <span className="text-[10px] font-bold text-zinc-600 uppercase">{TEXT_PICKER_META[pickedTextKey].visibilityLabel || "표시 여부"}</span>
+                      <input
+                        type="checkbox"
+                        checked={config[TEXT_PICKER_META[pickedTextKey].visibilityKey] !== false}
+                        onChange={(e) => updateConfig({ [TEXT_PICKER_META[pickedTextKey].visibilityKey]: e.target.checked })}
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-4 w-4 accent-zinc-900"
+                      />
+                    </label>
+                  )}
                   {Array.isArray(TEXT_PICKER_META[pickedTextKey].textFields) && TEXT_PICKER_META[pickedTextKey].textFields.length > 0 && (
                     <div className="space-y-2">
                       {TEXT_PICKER_META[pickedTextKey].textFields.map((f) => (
@@ -1126,6 +1181,18 @@ ${fontCatalogText}
                         </div>
                       ))}
                     </div>
+                  )}
+                  {TEXT_PICKER_META[pickedTextKey].toggleKey && (
+                    <label className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2">
+                      <span className="text-[10px] font-bold text-zinc-600 uppercase">{TEXT_PICKER_META[pickedTextKey].toggleLabel}</span>
+                      <input
+                        type="checkbox"
+                        checked={config[TEXT_PICKER_META[pickedTextKey].toggleKey] === true}
+                        onChange={(e) => updateConfig({ [TEXT_PICKER_META[pickedTextKey].toggleKey]: e.target.checked })}
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-4 w-4 accent-zinc-900"
+                      />
+                    </label>
                   )}
                   {TEXT_PICKER_META[pickedTextKey].textKey && (
                     <div className="space-y-1.5">
@@ -1532,6 +1599,7 @@ ${fontCatalogText}
                       onTouchStart={handleTouchStart}
                       onPhotoClick={handlePhotoClick}
                       previewPhotoContainerRef={previewPhotoContainerRef}
+                      onHeroTextOffsetChange={updateConfig}
                       data={previewData}
                       disableMainPhotoOverlay={String(previewData?.config?.imageStyle || "standard") !== "full"}
                       forceFullImageDarken
@@ -1551,6 +1619,7 @@ ${fontCatalogText}
                     onTouchStart={handleTouchStart}
                     onPhotoClick={handlePhotoClick}
                     previewPhotoContainerRef={previewPhotoContainerRef}
+                    onHeroTextOffsetChange={updateConfig}
                     data={previewData}
                     disableMainPhotoOverlay={String(previewData?.config?.imageStyle || "standard") !== "full"}
                     forceFullImageDarken

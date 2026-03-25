@@ -52,6 +52,8 @@ public class InvitationController {
         try {
             invitationService.deleteById(id, userId);
             return ResponseEntity.ok(Map.of("success", true));
+        } catch (SecurityException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
@@ -63,6 +65,8 @@ public class InvitationController {
         try {
             invitationService.deleteById(id, userId);
             return ResponseEntity.ok(Map.of("success", true));
+        } catch (SecurityException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
@@ -74,6 +78,8 @@ public class InvitationController {
         try {
             Invitation inv = invitationService.save(req, userId);
             return ResponseEntity.ok(Map.of("success", true, "invitation", inv));
+        } catch (SecurityException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }

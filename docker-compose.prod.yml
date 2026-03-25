@@ -108,3 +108,4 @@ services:
     volumes:
       - ${BACKEND_JAR_PATH:-/volume1/VibeCard/backend/app.jar}:/app/app.jar:ro
       - ${BACKEND_UPLOADS_PATH:-/volume1/docker/vibecard/backend/uploads}:/app/uploads
+      - ${FRONTEND_DIST_PATH:-/volume1/VibeCard/frontend-dist}:/app/frontend-dist:ro

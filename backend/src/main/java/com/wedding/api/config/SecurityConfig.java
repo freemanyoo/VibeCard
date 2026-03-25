@@ -42,6 +42,7 @@ public class SecurityConfig {
                                 "/api/auth/social/google", "/api/auth/social/naver", "/api/auth/social/kakao",
                                 "/api/auth/promote-admin", "/api/auth/check-role")
                         .permitAll()
+                        .requestMatchers("/invitation/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/invitations/slug/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/skins").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/invitations/*/guestbook").permitAll()

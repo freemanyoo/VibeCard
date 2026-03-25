@@ -4,11 +4,14 @@ import { PhoneFrameHeightProvider } from "../context/PhoneFrameContext";
 const PHONE_W = 375;
 const PHONE_H = 750;
 const COMPACT_SCALE = 0.9;
+const PHONE_FRAME_BORDER = 12;
+const PHONE_OUTER_W = PHONE_W + (PHONE_FRAME_BORDER * 2);
+const PHONE_OUTER_H = PHONE_H + (PHONE_FRAME_BORDER * 2);
 
 function PhoneFrameInner({ children, className, backgroundColor, contentRef }) {
   return (
     <div
-      className={`w-[375px] h-[750px] bg-white rounded-[60px] shadow-2xl border-[12px] border-zinc-900 overflow-hidden relative flex flex-col transition-transform duration-500 ${className}`}
+      className={`box-content w-[375px] h-[750px] bg-white rounded-[60px] shadow-2xl border-[12px] border-zinc-900 overflow-hidden relative flex flex-col transition-transform duration-500 ${className}`}
     >
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-zinc-900 rounded-b-2xl z-30" />
       <PhoneFrameHeightProvider contentRef={contentRef}>
@@ -35,8 +38,8 @@ export default function MobileFrame({ children, className = "", backgroundColor 
       <div
         className="flex justify-center"
         style={{
-          width: PHONE_W * scale,
-          height: PHONE_H * scale,
+          height: PHONE_OUTER_H * scale,
+          width: PHONE_OUTER_W * scale,
           maxWidth: "100%",
         }}
       >
@@ -44,8 +47,8 @@ export default function MobileFrame({ children, className = "", backgroundColor 
           style={{
             transform: `scale(${scale})`,
             transformOrigin: "top center",
-            width: PHONE_W,
-            height: PHONE_H,
+            width: PHONE_OUTER_W,
+            height: PHONE_OUTER_H,
           }}
         >
           {inner}
@@ -56,7 +59,7 @@ export default function MobileFrame({ children, className = "", backgroundColor 
 
   return (
     <div className={`max-w-full max-h-[80vh] md:max-h-[90vh] flex justify-center ${className}`}>
-      <div style={{ width: PHONE_W, height: PHONE_H, maxHeight: "min(750px, 90vh)" }} className="shrink-0">
+      <div style={{ width: PHONE_OUTER_W, height: PHONE_OUTER_H, maxHeight: "min(774px, 90vh)" }} className="shrink-0">
         {inner}
       </div>
     </div>

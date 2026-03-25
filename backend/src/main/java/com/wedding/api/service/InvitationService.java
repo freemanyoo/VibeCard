@@ -25,13 +25,17 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.*;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
 @Service
 @RequiredArgsConstructor
 public class InvitationService {
+    private static final ZoneId WEDDING_DATE_ZONE = ZoneId.of("Asia/Seoul");
     private static final int ORIGINAL_MAX_EDGE = 2200;
     private static final float ORIGINAL_JPEG_QUALITY = 0.90f;
     private static final int THUMB_MAX_EDGE = 900;
@@ -61,7 +65,7 @@ public class InvitationService {
 
     public Invitation getById(String id, String userId) {
         Invitation inv = invitationRepository.findById(id).orElse(null);
-        if (inv == null || !inv.getUser().getId().equals(userId))
+        if (inv == null || inv.getUser() == null || !userId.equals(inv.getUser().getId()))
             return null;
         return inv;
     }
@@ -71,9 +75,7 @@ public class InvitationService {
         Invitation inv = invitationRepository.findById(id).orElse(null);
         if (inv == null)
             throw new RuntimeException("청첩장을 찾을 수 없습니다.");
-        if (inv.getUser() == null || !userId.equals(inv.getUser().getId())) {
-            throw new RuntimeException("삭제 권한이 없습니다.");
-        }
+        assertOwnership(inv, userId, "삭제");
         invitationRepository.delete(inv);
     }
 
@@ -84,6 +86,7 @@ public class InvitationService {
             inv = invitationRepository.findById(req.getId()).orElse(null);
             if (inv == null)
                 throw new RuntimeException("청첩장을 찾을 수 없습니다.");
+            assertOwnership(inv, userId, "수정");
         } else {
             inv = new Invitation();
             User user = userRepository.findById(userId).orElseThrow();
@@ -99,7 +102,7 @@ public class InvitationService {
         inv.setSlug(normalizedSlug);
         inv.setGroomName(req.getGroomName());
         inv.setBrideName(req.getBrideName());
-        inv.setWeddingDate(LocalDateTime.parse(req.getWeddingDate(), DateTimeFormatter.ISO_DATE_TIME));
+        inv.setWeddingDate(parseWeddingDate(req.getWeddingDate()));
         inv.setVenueName(req.getVenueName());
         inv.setVenueAddress(req.getVenueAddress());
         inv.setMainPhotoUrl(req.getMainPhotoUrl());
@@ -157,6 +160,34 @@ public class InvitationService {
             return invitationRepository.save(inv);
         } catch (DataIntegrityViolationException e) {
             throw new RuntimeException("이미 사용 중인 청첩장 주소입니다. 다른 주소를 입력해 주세요.");
+        }
+    }
+
+    private LocalDateTime parseWeddingDate(String value) {
+        String raw = value != null ? value.trim() : "";
+        if (raw.isBlank()) {
+            throw new RuntimeException("예식 일시를 입력해 주세요.");
+        }
+        try {
+            return OffsetDateTime.parse(raw, DateTimeFormatter.ISO_DATE_TIME)
+                    .atZoneSameInstant(WEDDING_DATE_ZONE)
+                    .toLocalDateTime();
+        } catch (DateTimeParseException ignored) {
+        }
+        try {
+            return LocalDateTime.parse(raw, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        } catch (DateTimeParseException ignored) {
+        }
+        try {
+            return LocalDateTime.parse(raw, DateTimeFormatter.ISO_DATE_TIME);
+        } catch (DateTimeParseException ignored) {
+        }
+        throw new RuntimeException("예식 일시 형식이 올바르지 않습니다.");
+    }
+
+    private void assertOwnership(Invitation inv, String userId, String action) {
+        if (inv.getUser() == null || userId == null || !userId.equals(inv.getUser().getId())) {
+            throw new SecurityException(action + " 권한이 없습니다.");
         }
     }
 

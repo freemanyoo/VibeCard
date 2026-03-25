@@ -4,7 +4,7 @@ import { Upload, ChevronLeft, ChevronRight, Monitor, Smartphone, X } from "lucid
 import { useAuth } from "../lib/auth";
 import api from "../lib/api";
 import { TYPO_DEFAULTS, getTypoForTemplate } from "../lib/skinDefaults";
-import { toThumbnailUrl } from "../lib/imageUrl";
+import { toThumbnailUrl, formatImageUrl } from "../lib/imageUrl";
 import MobileFrame from "../components/MobileFrame";
 import InvitationView from "../components/InvitationView";
 
@@ -97,50 +97,100 @@ const resolveHeroReadabilityValue = (cfg, colorKey) => {
   return clampReadabilityValue(cfg?.[readabilityKey]);
 };
 
+const INVITATION_TYPE_OPTIONS = [
+  {
+    value: "standard",
+    label: "일반 결혼식",
+    description: "지금처럼 예식 일정, 장소, 지도, 참석 여부를 일반적으로 받는 기본형입니다.",
+  },
+  {
+    value: "family",
+    label: "가족예식",
+    description: "가족끼리만 진행하는 예식 안내형입니다. 하객 참석보다는 소식 전달에 맞춰집니다.",
+  },
+  {
+    value: "reception",
+    label: "피로연 초대",
+    description: "예식은 가족끼리 진행하고, 하객은 피로연에 초대하는 타입입니다. 메인 일정과 장소는 피로연 기준으로 작성합니다.",
+  },
+  {
+    value: "congrats",
+    label: "축하마음 전하기",
+    description: "가족예식으로 진행하고 직접 초대보다는 축하 인사나 마음 전달 중심으로 구성하는 타입입니다.",
+  },
+];
+
 const BUILDER_TEXT_PICKER_META = {
-  titleSize: { label: "메인 제목", min: 20, max: 80, textFields: [{ key: "mainTitleText", label: "제목 문구", placeholder: "예: 우리 결혼합니다" }] },
-  saveTheDateSize: { label: "Save The Date", min: 8, max: 24, textFields: [{ key: "saveTheDateText", label: "문구", placeholder: "예: Save The Date" }] },
+  titleSize: { label: "메인 제목", min: 20, max: 80, visibilityKey: "showHeroTitle", visibilityLabel: "메인 제목 표시", textFields: [{ key: "mainTitleText", label: "제목 문구", placeholder: "예: 우리 결혼합니다" }] },
+  saveTheDateSize: { label: "Save The Date", min: 8, max: 24, visibilityKey: "showSaveTheDate", visibilityLabel: "Save The Date 표시", textFields: [{ key: "saveTheDateText", label: "문구", placeholder: "예: Save The Date" }] },
   namesSize: {
-    label: "신랑·신부 이름", min: 16, max: 60, textFields: [
+    label: "신랑·신부 이름", min: 16, max: 60, visibilityKey: "showHeroNames", visibilityLabel: "신랑·신부 이름 표시", textFields: [
       { key: "groomDisplayName", label: "신랑 이름", placeholder: "신랑 이름" },
       { key: "brideDisplayName", label: "신부 이름", placeholder: "신부 이름" },
-    ]
+    ],
+    toggleKey: "reverseHeroNames",
+    toggleLabel: "이름 좌우 위치 바꾸기",
   },
-  dateSize: { label: "히어로 날짜/시간", min: 10, max: 30 },
-  heroVenueNameSize: { label: "히어로 예식장명", min: 12, max: 40, textFields: [{ key: "venueDisplayName", label: "예식장명", placeholder: "예식장명" }] },
-  heroDDaySize: { label: "D-day 배지", min: 8, max: 24 },
-  contentSize: { label: "초대 메시지 본문", min: 12, max: 40, textFields: [{ key: "invitationBodyText", label: "본문 문구", placeholder: "초대 문구" }] },
-  noticeTitleSize: { label: "알림 사항 제목", min: 8, max: 32, textFields: [{ key: "noticeTitleText", label: "제목 문구", placeholder: "예: 알림 사항" }] },
-  noticeContentSize: { label: "알림 사항 내용", min: 10, max: 28, textFields: [{ key: "noticeContentText", label: "안내 문구", placeholder: "알림 내용을 입력하세요." }] },
+  dateSize: { label: "히어로 날짜/시간", min: 10, max: 30, visibilityKey: "showHeroDate", visibilityLabel: "히어로 날짜/시간 표시" },
+  heroVenueNameSize: { label: "히어로 예식장명", min: 12, max: 40, visibilityKey: "showHeroVenue", visibilityLabel: "히어로 예식장명 표시", textFields: [{ key: "venueDisplayName", label: "예식장명", placeholder: "예식장명" }] },
+  heroDDaySize: { label: "D-day 배지", min: 8, max: 24, visibilityKey: "showHeroDday", visibilityLabel: "D-day 배지 표시" },
+  messageTitleSize: {
+    label: "메시지 제목",
+    min: 8,
+    max: 32,
+    visibilityKey: "showGalleryTitle",
+    visibilityLabel: "메시지 제목 표시",
+    textFields: [{ key: "messageSectionTitleText", label: "머릿글", placeholder: "예: 전하는 마음" }],
+  },
+  contentSize: {
+    label: "메시지 본문",
+    min: 12,
+    max: 40,
+    visibilityKey: "showInvitationMessage",
+    visibilityLabel: "메시지 본문 표시",
+    textFields: [
+      { key: "messageSectionTitleText", label: "섹션 제목", placeholder: "예: 전하는 마음" },
+      { key: "invitationBodyText", label: "본문 문구", placeholder: "메시지 내용을 입력하세요." },
+    ],
+  },
+  noticeTitleSize: { label: "안내 제목", min: 8, max: 32, visibilityKey: "showNoticeTitle", visibilityLabel: "안내 제목 표시", textFields: [{ key: "noticeTitleText", label: "제목 문구", placeholder: "예: 안내 말씀" }] },
+  noticeContentSize: { label: "안내 내용", min: 10, max: 28, visibilityKey: "showNoticeContent", visibilityLabel: "안내 내용 표시", textFields: [{ key: "noticeContentText", label: "안내 문구", placeholder: "안내 내용을 입력하세요." }] },
   familyLineSize: {
-    label: "가족 소개", min: 10, max: 30, textFields: [
+    label: "가족 소개", min: 10, max: 30, visibilityKey: "showFamilyInfo", visibilityLabel: "가족 소개 표시", textFields: [
       { key: "groomFatherText", label: "신랑측 아버지", placeholder: "예: 김아버지" },
       { key: "groomMotherText", label: "신랑측 어머니", placeholder: "예: 이어머니" },
       { key: "groomRelationText", label: "신랑측 관계", placeholder: "예: 장남" },
+      { key: "groomPhone", label: "신랑 연락처", placeholder: "010-1234-5678", inputType: "tel", rows: 1 },
+      { key: "groomFatherPhone", label: "신랑측 아버지 연락처", placeholder: "010-1234-5678", inputType: "tel", rows: 1 },
+      { key: "groomMotherPhone", label: "신랑측 어머니 연락처", placeholder: "010-1234-5678", inputType: "tel", rows: 1 },
       { key: "brideFatherText", label: "신부측 아버지", placeholder: "예: 박아버지" },
       { key: "brideMotherText", label: "신부측 어머니", placeholder: "예: 최어머니" },
       { key: "brideRelationText", label: "신부측 관계", placeholder: "예: 장녀" },
+      { key: "bridePhone", label: "신부 연락처", placeholder: "010-1234-5678", inputType: "tel", rows: 1 },
+      { key: "brideFatherPhone", label: "신부측 아버지 연락처", placeholder: "010-1234-5678", inputType: "tel", rows: 1 },
+      { key: "brideMotherPhone", label: "신부측 어머니 연락처", placeholder: "010-1234-5678", inputType: "tel", rows: 1 },
     ]
   },
-  calendarTitleSize: { label: "달력 제목", min: 12, max: 42 },
-  calendarDaySize: { label: "달력 요일/날짜", min: 10, max: 24 },
-  locationTitleSize: { label: "Location 제목", min: 8, max: 24 },
-  locationVenueNameSize: { label: "Location 예식장명", min: 10, max: 40 },
-  locationAddressSize: { label: "Location 주소", min: 10, max: 24 },
-  navButtonTextSize: { label: "내비 버튼 텍스트", min: 10, max: 24 },
-  accountTitleSize: { label: "Account 제목", min: 8, max: 32 },
-  accountSubtitleSize: { label: "Account 보조문구", min: 9, max: 24 },
+  calendarTitleSize: { label: "달력 제목", min: 12, max: 42, visibilityKey: "showCalendarTitle", visibilityLabel: "달력 제목 표시" },
+  calendarDaySize: { label: "달력 요일/날짜", min: 10, max: 24, visibilityKey: "showCalendarGrid", visibilityLabel: "달력 날짜 표시" },
+  galleryTitleSize: { label: "Gallery 제목", min: 8, max: 32, visibilityKey: "showGalleryTitle", visibilityLabel: "Gallery 제목 표시" },
+  locationTitleSize: { label: "Location 제목", min: 8, max: 24, visibilityKey: "showLocationTitle", visibilityLabel: "Location 제목 표시" },
+  locationVenueNameSize: { label: "Location 예식장명", min: 10, max: 40, visibilityKey: "showLocationVenue", visibilityLabel: "Location 예식장명 표시" },
+  locationAddressSize: { label: "Location 주소", min: 10, max: 24, visibilityKey: "showLocationAddress", visibilityLabel: "Location 주소 표시" },
+  navButtonTextSize: { label: "내비 버튼 텍스트", min: 10, max: 24, visibilityKey: "showNavigationButtons", visibilityLabel: "내비 버튼 표시" },
+  accountTitleSize: { label: "Account 제목", min: 8, max: 32, visibilityKey: "showAccountTitle", visibilityLabel: "Account 제목 표시" },
+  accountSubtitleSize: { label: "Account 보조문구", min: 9, max: 24, visibilityKey: "showAccountSubtitle", visibilityLabel: "Account 보조문구 표시" },
   accountToggleLabelSize: { label: "계좌 토글 라벨", min: 9, max: 24 },
   accountHeaderSize: { label: "계좌 상단(은행/Copy)", min: 8, max: 22 },
   accountInfoSize: { label: "계좌 정보(번호/예금주)", min: 10, max: 36 },
-  attendanceTitleSize: { label: "참석 제목", min: 8, max: 32 },
-  attendanceDescSize: { label: "참석 설명", min: 9, max: 24 },
-  guestbookTitleSize: { label: "축하 메시지 제목", min: 8, max: 32 },
-  guestbookDescSize: { label: "축하 메시지 설명", min: 9, max: 24 },
+  attendanceTitleSize: { label: "참석 제목", min: 8, max: 32, visibilityKey: "showAttendanceTitle", visibilityLabel: "참석 제목 표시" },
+  attendanceDescSize: { label: "참석 설명", min: 9, max: 24, visibilityKey: "showAttendanceDesc", visibilityLabel: "참석 설명 표시" },
+  guestbookTitleSize: { label: "축하 메시지 제목", min: 8, max: 32, visibilityKey: "showGuestbookTitle", visibilityLabel: "축하 메시지 제목 표시" },
+  guestbookDescSize: { label: "축하 메시지 설명", min: 9, max: 24, visibilityKey: "showGuestbookDesc", visibilityLabel: "축하 메시지 설명 표시" },
   attendanceLabelSize: { label: "폼 라벨", min: 9, max: 24 },
   attendanceOptionTextSize: { label: "참석 옵션", min: 9, max: 24 },
   formPlaceholderSize: { label: "폼 placeholder", min: 9, max: 24 },
-  footerWeddingOfSize: { label: "하단 Wedding of", min: 8, max: 24 },
+  footerWeddingOfSize: { label: "하단 Wedding of", min: 8, max: 24, visibilityKey: "showFooterWeddingOf", visibilityLabel: "하단 Wedding of 표시" },
 };
 
 function loadKakaoPlaceServiceScript(apiKey) {
@@ -176,11 +226,98 @@ const AI_INVITATION_MODEL_OPTIONS = [
   { value: "openclaw1", label: "OpenAI" },
   { value: "openclaw3", label: "Local LLM" },
 ];
+const GALLERY_SORT_OPTIONS = [
+  { value: "upload", label: "업로드 순서" },
+  { value: "landscape-first", label: "가로 우선" },
+  { value: "portrait-first", label: "세로 우선" },
+];
+const INVITATION_CONTENT_CONFIG_KEYS = [
+  "mainTitleText",
+  "saveTheDateText",
+  "messageSectionTitleText",
+  "groomDisplayName",
+  "brideDisplayName",
+  "venueDisplayName",
+  "heroVenueNameText",
+  "invitationBodyText",
+  "noticeTitleText",
+  "noticeContentText",
+  "groomFatherText",
+  "groomMotherText",
+  "groomRelationText",
+  "brideFatherText",
+  "brideMotherText",
+  "brideRelationText",
+  "groomParentLineText",
+  "brideParentLineText",
+];
+const getInvitationMessageSectionTitle = (invitationType) => {
+  if (invitationType === "reception") return "초대의 말씀";
+  if (invitationType === "family") return "전하는 말씀";
+  if (invitationType === "congrats") return "전하는 마음";
+  return "초대의 말씀";
+};
+const isVisibilityConfigKey = (key) => /^show[A-Z]/.test(String(key || ""));
+const padDateTimeLocalUnit = (value) => String(value).padStart(2, "0");
+const formatDateTimeLocalValue = (value) => {
+  const date = value instanceof Date ? value : new Date(value || Date.now());
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${padDateTimeLocalUnit(date.getMonth() + 1)}-${padDateTimeLocalUnit(date.getDate())}T${padDateTimeLocalUnit(date.getHours())}:${padDateTimeLocalUnit(date.getMinutes())}`;
+};
+const toApiDateTimeValue = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const match = raw.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::(\d{2}))?$/);
+  if (!match) return null;
+  const [, datePart, timePart, secondPart] = match;
+  return `${datePart}T${timePart}:${secondPart || "00"}`;
+};
 const normalizeAlbumPhotos = (photos) =>
   Array.from({ length: 9 }, (_, i) => {
     const url = Array.isArray(photos) ? photos[i] : null;
     return typeof url === "string" && String(url).trim().length > 0 ? url : null;
   });
+const compactAlbumPhotos = (photos) => {
+  const filled = normalizeAlbumPhotos(photos).filter(Boolean);
+  return Array.from({ length: 9 }, (_, i) => filled[i] || null);
+};
+const areAlbumPhotosEqual = (left, right) => {
+  const a = normalizeAlbumPhotos(left);
+  const b = normalizeAlbumPhotos(right);
+  return a.every((value, index) => value === b[index]);
+};
+const normalizeGalleryUploadOrder = (value) => (
+  Array.isArray(value)
+    ? value.filter((item) => typeof item === "string" && String(item).trim().length > 0)
+    : []
+);
+const hasOwnKey = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key);
+const omitInvitationContentConfig = (value) => {
+  const next = { ...(value || {}) };
+  INVITATION_CONTENT_CONFIG_KEYS.forEach((key) => {
+    delete next[key];
+  });
+  return next;
+};
+const syncGalleryUploadOrder = (order, photos) => {
+  const normalizedPhotos = normalizeAlbumPhotos(photos).filter(Boolean);
+  const availableCounts = normalizedPhotos.reduce((acc, url) => {
+    acc[url] = (acc[url] || 0) + 1;
+    return acc;
+  }, {});
+  const nextOrder = [];
+  normalizeGalleryUploadOrder(order).forEach((url) => {
+    if ((availableCounts[url] || 0) <= 0) return;
+    nextOrder.push(url);
+    availableCounts[url] -= 1;
+  });
+  normalizedPhotos.forEach((url) => {
+    if ((availableCounts[url] || 0) <= 0) return;
+    nextOrder.push(url);
+    availableCounts[url] -= 1;
+  });
+  return nextOrder;
+};
 
 export default function Builder() {
   const EDITOR_BASE_W = 303;
@@ -244,7 +381,7 @@ export default function Builder() {
 
   const [formData, setFormData] = useState({
     groom: "", bride: "", slug: "my-wedding", photoUrl: null,
-    weddingDate: new Date(new Date(Date.now() + 100 * 24 * 60 * 60 * 1000).setHours(12, 0, 0, 0)).toISOString().slice(0, 16),
+    weddingDate: formatDateTimeLocalValue(new Date(new Date(Date.now() + 100 * 24 * 60 * 60 * 1000).setHours(12, 0, 0, 0))),
     venueName: "", venueAddress: "", invitationTitle: DEFAULT_INVITATION_TITLE,
     invitationMessage: DEFAULT_INVITATION_MESSAGE,
     groomFather: "", groomMother: "", groomRelation: "장남", groomPhone: "",
@@ -282,23 +419,22 @@ export default function Builder() {
       }
       const resolvedInvitationMessage =
         String(initialData.invitationMessage || "").trim()
-        || String(parsedConfig.invitationBodyText || "").trim()
-        || DEFAULT_INVITATION_MESSAGE;
+        || String(parsedConfig.invitationBodyText || "").trim();
       setFormData({
         groom: initialData.groomName ?? "", bride: initialData.brideName ?? "",
         slug: initialData.slug ?? "my-wedding", photoUrl: initialData.mainPhotoUrl ?? null,
-        weddingDate: initialData.weddingDate ? new Date(initialData.weddingDate).toISOString().slice(0, 16) : formData.weddingDate,
+        weddingDate: initialData.weddingDate ? formatDateTimeLocalValue(initialData.weddingDate) : formData.weddingDate,
         venueName: initialData.venueName ?? "", venueAddress: initialData.venueAddress ?? "",
-        invitationTitle: initialData.invitationTitle ?? DEFAULT_INVITATION_TITLE,
+        invitationTitle: initialData.invitationTitle ?? "",
         invitationMessage: resolvedInvitationMessage,
         groomFather: initialData.groomFather ?? "", groomMother: initialData.groomMother ?? "",
-        groomRelation: initialData.groomRelation ?? "장남", groomPhone: initialData.groomPhone ?? "",
+        groomRelation: initialData.groomRelation ?? "", groomPhone: initialData.groomPhone ?? "",
         brideFather: initialData.brideFather ?? "", brideMother: initialData.brideMother ?? "",
-        brideRelation: initialData.brideRelation ?? "장녀", bridePhone: initialData.bridePhone ?? "",
+        brideRelation: initialData.brideRelation ?? "", bridePhone: initialData.bridePhone ?? "",
         groomFatherPhone: initialData.groomFatherPhone ?? "", groomMotherPhone: initialData.groomMotherPhone ?? "",
         brideFatherPhone: initialData.brideFatherPhone ?? "", brideMotherPhone: initialData.brideMotherPhone ?? "",
         youtubeUrl: initialData.youtubeUrl ?? "", bgmUrl: initialData.bgmUrl ?? "",
-        noticeTitle: initialData.noticeTitle ?? "알림 사항", noticeContent: initialData.noticeContent ?? "",
+        noticeTitle: initialData.noticeTitle ?? "", noticeContent: initialData.noticeContent ?? "",
         dDayEnabled: initialData.dDayEnabled ?? true, navigationEnabled: initialData.navigationEnabled ?? true,
         albumPhotos: normalizeAlbumPhotos(parsedAlbumPhotos),
         bankAccounts: initialData.bankAccounts ?? [],
@@ -308,35 +444,50 @@ export default function Builder() {
       if (initialData.skinId) setSelectedSkinId(initialData.skinId);
       try {
         const p = parsedConfig;
-        const t = TYPO_DEFAULTS[initialData.template || "modern"];
-        const zoom = Number(p.mainPhotoZoom);
+        const nextConfig = buildStoredInvitationConfig(initialData, p, parsedAlbumPhotos);
+        const zoom = Number(nextConfig.mainPhotoZoom);
         if (!Number.isNaN(zoom)) setPhotoZoom(Math.max(40, Math.min(180, zoom)));
-        const ratio = Number(p.mainPhotoAspectRatio);
+        const ratio = Number(nextConfig.mainPhotoAspectRatio);
         if (!Number.isNaN(ratio) && ratio > 0) setPhotoAspectRatio(ratio);
-        setConfig((prev) => ({
-          ...prev,
-          ...p,
-          invitationBodyText: String(p.invitationBodyText || "").trim() || resolvedInvitationMessage,
-          titleSize: p.titleSize ?? t.titleSize,
-          namesSize: p.namesSize ?? t.namesSize,
-          dateSize: p.dateSize ?? t.dateSize,
-          contentSize: p.contentSize ?? t.contentSize,
-        }));
+        setConfig(nextConfig);
+        setGalleryUploadOrder(nextConfig.galleryUploadOrder, normalizeAlbumPhotos(parsedAlbumPhotos));
       } catch { }
     }
   }, [initialData]);
 
-  const updateFormData = (updates) => setFormData((prev) => ({ ...prev, ...updates }));
+  const updateFormData = (updates) => setFormData((prev) => {
+    const resolved = typeof updates === "function" ? updates(prev) : updates;
+    if (!resolved || typeof resolved !== "object") return prev;
+    if (resolved === prev) return prev;
+    return { ...prev, ...resolved };
+  });
 
   const [skins, setSkins] = useState([]);
   const [selectedSkinId, setSelectedSkinId] = useState(null);
   const defaultFullConfig = {
     theme: "modern",
+    invitationType: "standard",
     fontFamily: "'Noto Sans KR', sans-serif",
     bgColor: "#f1f5f9",
     subBgColor: "#e2e8f0",
     textColor: "#0f172a",
     pointColor: "#475569",
+    showSaveTheDate: true,
+    heroTextOffsetX: 0,
+    heroTextOffsetY: 0,
+    heroSaveDateOffsetX: 0,
+    heroSaveDateOffsetY: 0,
+    heroTitleOffsetX: 0,
+    heroTitleOffsetY: 0,
+    heroNamesOffsetX: 0,
+    heroNamesOffsetY: 0,
+    reverseHeroNames: false,
+    heroDateOffsetX: 0,
+    heroDateOffsetY: 0,
+    heroVenueOffsetX: 0,
+    heroVenueOffsetY: 0,
+    heroDdayOffsetX: 0,
+    heroDdayOffsetY: 0,
     saveTheDateColor: "",
     heroVenueColor: "",
     heroDdayColor: "",
@@ -348,12 +499,46 @@ export default function Builder() {
     imageGradient: 38,
     mapHeight: 300,
     mapMaxWidth: 1000,
+    gallerySortMode: "upload",
+    galleryUploadOrder: [],
   };
   const skinDefaultsBySlug = {
     modern: { bgColor: "#f1f5f9", subBgColor: "#e2e8f0", textColor: "#0f172a", pointColor: "#475569", fontFamily: "'Noto Sans KR', sans-serif", ...TYPO_DEFAULTS.modern, imageHeight: 460, imageGradient: 38, mapHeight: 300, mapMaxWidth: 1000 },
     elegant: { bgColor: "#1a1a1a", subBgColor: "#252525", textColor: "#fafafa", pointColor: "#d4af37", fontFamily: "'Noto Serif KR', serif", ...TYPO_DEFAULTS.elegant, imageHeight: 450, imageGradient: 50, mapHeight: 300, mapMaxWidth: 1000 },
     classic: { bgColor: "#faf6f1", subBgColor: "#f5efe6", textColor: "#4a4035", pointColor: "#8b6914", fontFamily: "'Nanum Myeongjo', serif", ...TYPO_DEFAULTS.classic, imageHeight: 420, imageGradient: 42, mapHeight: 300, mapMaxWidth: 1000 },
   };
+  function buildStoredInvitationConfig(invitation, parsedConfig = {}, albumPhotos = []) {
+    const templateKey = invitation?.template || "modern";
+    const fallback = skinDefaultsBySlug[templateKey] || {};
+    const shouldUseCustomHeroText =
+      String(parsedConfig.heroTextColorMode || "").toLowerCase() === "custom" || hasExplicitHeroColorConfig(parsedConfig);
+    const syncedGalleryUploadOrder = syncGalleryUploadOrder(parsedConfig.galleryUploadOrder, normalizeAlbumPhotos(albumPhotos));
+    return {
+      ...defaultFullConfig,
+      ...(fallback || {}),
+      ...parsedConfig,
+      invitationType: String(parsedConfig.invitationType || defaultFullConfig.invitationType || "standard"),
+      gallerySortMode: String(parsedConfig.gallerySortMode || defaultFullConfig.gallerySortMode || "upload"),
+      galleryUploadOrder: syncedGalleryUploadOrder,
+      ...(hasOwnKey(parsedConfig, "messageSectionTitleText") ? { messageSectionTitleText: String(parsedConfig.messageSectionTitleText ?? "") } : {}),
+      mainTitleText: invitation?.invitationTitle != null ? String(invitation.invitationTitle) : (hasOwnKey(parsedConfig, "mainTitleText") ? String(parsedConfig.mainTitleText ?? "") : ""),
+      invitationBodyText: invitation?.invitationMessage != null ? String(invitation.invitationMessage) : (hasOwnKey(parsedConfig, "invitationBodyText") ? String(parsedConfig.invitationBodyText ?? "") : ""),
+      groomDisplayName: invitation?.groomName != null ? String(invitation.groomName) : (hasOwnKey(parsedConfig, "groomDisplayName") ? String(parsedConfig.groomDisplayName ?? "") : ""),
+      brideDisplayName: invitation?.brideName != null ? String(invitation.brideName) : (hasOwnKey(parsedConfig, "brideDisplayName") ? String(parsedConfig.brideDisplayName ?? "") : ""),
+      venueDisplayName: invitation?.venueName != null ? String(invitation.venueName) : (hasOwnKey(parsedConfig, "venueDisplayName") ? String(parsedConfig.venueDisplayName ?? "") : ""),
+      heroVenueNameText: invitation?.venueName != null ? String(invitation.venueName) : (hasOwnKey(parsedConfig, "heroVenueNameText") ? String(parsedConfig.heroVenueNameText ?? "") : ""),
+      noticeTitleText: invitation?.noticeTitle != null ? String(invitation.noticeTitle) : (hasOwnKey(parsedConfig, "noticeTitleText") ? String(parsedConfig.noticeTitleText ?? "") : ""),
+      noticeContentText: invitation?.noticeContent != null ? String(invitation.noticeContent) : (hasOwnKey(parsedConfig, "noticeContentText") ? String(parsedConfig.noticeContentText ?? "") : ""),
+      groomFatherText: invitation?.groomFather != null ? String(invitation.groomFather) : (hasOwnKey(parsedConfig, "groomFatherText") ? String(parsedConfig.groomFatherText ?? "") : ""),
+      groomMotherText: invitation?.groomMother != null ? String(invitation.groomMother) : (hasOwnKey(parsedConfig, "groomMotherText") ? String(parsedConfig.groomMotherText ?? "") : ""),
+      groomRelationText: invitation?.groomRelation != null ? String(invitation.groomRelation) : (hasOwnKey(parsedConfig, "groomRelationText") ? String(parsedConfig.groomRelationText ?? "") : ""),
+      brideFatherText: invitation?.brideFather != null ? String(invitation.brideFather) : (hasOwnKey(parsedConfig, "brideFatherText") ? String(parsedConfig.brideFatherText ?? "") : ""),
+      brideMotherText: invitation?.brideMother != null ? String(invitation.brideMother) : (hasOwnKey(parsedConfig, "brideMotherText") ? String(parsedConfig.brideMotherText ?? "") : ""),
+      brideRelationText: invitation?.brideRelation != null ? String(invitation.brideRelation) : (hasOwnKey(parsedConfig, "brideRelationText") ? String(parsedConfig.brideRelationText ?? "") : ""),
+      ...(shouldUseCustomHeroText ? { heroTextColorMode: "custom" } : {}),
+      theme: templateKey,
+    };
+  }
   const [template, setTemplate] = useState(queryTemplate ?? "modern");
   const photoFit = "cover";
   const [photoPosition, setPhotoPosition] = useState("50% 50%");
@@ -366,9 +551,235 @@ export default function Builder() {
   const [heroSelectedColorKeys, setHeroSelectedColorKeys] = useState(() => HERO_TEXT_COLOR_ITEMS.map((item) => item.key));
   const colorPatchRef = useRef({});
   const colorFrameRef = useRef(null);
+  const galleryImageMetaCacheRef = useRef(new Map());
+  const galleryUploadOrderRef = useRef([]);
   const handleSectionSelect = (id) => { setSelectedSection(id); const el = document.getElementById(`control-${id}`); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); };
   const [config, setConfig] = useState(() => ({ ...defaultFullConfig }));
   const updateConfig = (updates) => setConfig((prev) => ({ ...prev, ...updates }));
+  const gallerySortMode = String(config.gallerySortMode || "upload");
+  const getGalleryUploadOrder = (photos = formData.albumPhotos, order = galleryUploadOrderRef.current) => (
+    syncGalleryUploadOrder(
+      normalizeGalleryUploadOrder(order).length > 0 ? order : config.galleryUploadOrder,
+      photos,
+    )
+  );
+  const setGalleryUploadOrder = (nextOrder, nextPhotos = formData.albumPhotos) => {
+    const synced = syncGalleryUploadOrder(nextOrder, nextPhotos);
+    galleryUploadOrderRef.current = synced;
+    updateConfig({ galleryUploadOrder: synced });
+    return synced;
+  };
+  useEffect(() => {
+    galleryUploadOrderRef.current = getGalleryUploadOrder();
+  }, [config.galleryUploadOrder, formData.albumPhotos]);
+  const loadGalleryImageMeta = (url) => {
+    const key = String(url || "").trim();
+    if (!key) return Promise.resolve({ width: 0, height: 0 });
+    const cached = galleryImageMetaCacheRef.current.get(key);
+    if (cached) return cached;
+    const pending = new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ width: img.naturalWidth || 0, height: img.naturalHeight || 0 });
+      img.onerror = () => resolve({ width: 0, height: 0 });
+      img.src = formatImageUrl(key);
+    });
+    galleryImageMetaCacheRef.current.set(key, pending);
+    return pending;
+  };
+  const sortAlbumPhotosByMode = async (photos, mode = gallerySortMode, uploadOrder = galleryUploadOrderRef.current) => {
+    const normalized = normalizeAlbumPhotos(photos);
+    const syncedUploadOrder = syncGalleryUploadOrder(uploadOrder, normalized);
+    if (mode === "upload") return compactAlbumPhotos(syncedUploadOrder);
+    const filled = normalized
+      .map((url, index) => ({ url, index }))
+      .filter((item) => Boolean(item.url));
+    if (filled.length <= 1) return compactAlbumPhotos(normalized);
+    const measured = await Promise.all(filled.map(async (item) => ({
+      ...item,
+      ...(await loadGalleryImageMeta(item.url)),
+    })));
+    const sorted = [...measured].sort((left, right) => {
+      const leftScore = mode === "portrait-first"
+        ? (left.height - left.width)
+        : (left.width - left.height);
+      const rightScore = mode === "portrait-first"
+        ? (right.height - right.width)
+        : (right.width - right.height);
+      if (rightScore !== leftScore) return rightScore - leftScore;
+      const primarySizeDiff = mode === "portrait-first"
+        ? (right.height - left.height)
+        : (right.width - left.width);
+      if (primarySizeDiff !== 0) return primarySizeDiff;
+      const secondarySizeDiff = mode === "portrait-first"
+        ? (right.width - left.width)
+        : (right.height - left.height);
+      if (secondarySizeDiff !== 0) return secondarySizeDiff;
+      return left.index - right.index;
+    });
+    return compactAlbumPhotos(sorted.map((item) => item.url));
+  };
+  const handleGallerySortModeChange = async (nextMode) => {
+    const syncedUploadOrder = setGalleryUploadOrder(galleryUploadOrderRef.current, formData.albumPhotos);
+    updateConfig({ gallerySortMode: nextMode, galleryUploadOrder: syncedUploadOrder });
+    const sorted = await sortAlbumPhotosByMode(formData.albumPhotos, nextMode, syncedUploadOrder);
+    if (!areAlbumPhotosEqual(sorted, formData.albumPhotos)) {
+      updateFormData({ albumPhotos: sorted });
+    }
+  };
+  const removeGalleryPhotoUrl = (targetUrl) => {
+    const nextOrder = (() => {
+      let removed = false;
+      return normalizeGalleryUploadOrder(galleryUploadOrderRef.current).filter((url) => {
+        if (!removed && url === targetUrl) {
+          removed = true;
+          return false;
+        }
+        return true;
+      });
+    })();
+    setGalleryUploadOrder(nextOrder, normalizeAlbumPhotos(formData.albumPhotos).map((url) => (url === targetUrl ? null : url)));
+    updateFormData((prevFormData) => {
+      const latestAlbumPhotos = normalizeAlbumPhotos(prevFormData.albumPhotos);
+      const nextAlbumPhotos = latestAlbumPhotos.map((url) => (url === targetUrl ? null : url));
+      if (typeof targetUrl === "string" && targetUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(targetUrl);
+      }
+      return {
+        ...prevFormData,
+        albumPhotos: gallerySortMode === "upload" ? nextAlbumPhotos : compactAlbumPhotos(nextAlbumPhotos),
+      };
+    });
+  };
+  const replaceGalleryPhotoUrl = (fromUrl, toUrl) => {
+    const nextOrder = (() => {
+      let replaced = false;
+      return normalizeGalleryUploadOrder(galleryUploadOrderRef.current).map((url) => {
+        if (!replaced && url === fromUrl) {
+          replaced = true;
+          return toUrl;
+        }
+        return url;
+      });
+    })();
+    setGalleryUploadOrder(nextOrder, normalizeAlbumPhotos(formData.albumPhotos).map((url) => (url === fromUrl ? toUrl : url)));
+    updateFormData((prevFormData) => {
+      const latestAlbumPhotos = normalizeAlbumPhotos(prevFormData.albumPhotos);
+      const targetIndex = latestAlbumPhotos.findIndex((url) => url === fromUrl);
+      if (targetIndex === -1) {
+        if (typeof fromUrl === "string" && fromUrl.startsWith("blob:")) {
+          URL.revokeObjectURL(fromUrl);
+        }
+        return prevFormData;
+      }
+      latestAlbumPhotos[targetIndex] = toUrl;
+      if (typeof fromUrl === "string" && fromUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(fromUrl);
+      }
+      return { ...prevFormData, albumPhotos: latestAlbumPhotos };
+    });
+  };
+  const uploadGalleryAsset = async (file, localUrl) => {
+    const compressed = await compressImage(file);
+    const data = new FormData();
+    data.append("file", compressed);
+    try {
+      const res = await api.post("/invitations/upload", data, { headers: { "Content-Type": "multipart/form-data" } });
+      if (res.data.success && res.data.url) {
+        replaceGalleryPhotoUrl(localUrl, res.data.url);
+      } else {
+        removeGalleryPhotoUrl(localUrl);
+      }
+    } catch {
+      removeGalleryPhotoUrl(localUrl);
+    }
+  };
+  const addGalleryFiles = async (files, preferredIndex = null) => {
+    const inputFiles = Array.from(files || []).filter(Boolean);
+    if (inputFiles.length === 0) return [];
+    const currentAlbumPhotos = normalizeAlbumPhotos(formData.albumPhotos);
+    const localEntries = [];
+
+    if (gallerySortMode === "upload") {
+      const nextAlbumPhotos = [...currentAlbumPhotos];
+      let searchIndex = preferredIndex ?? 0;
+      for (const file of inputFiles) {
+        const emptyIndex = nextAlbumPhotos.findIndex((url, index) => !url && index >= searchIndex);
+        if (emptyIndex === -1) break;
+        const localUrl = URL.createObjectURL(file);
+        nextAlbumPhotos[emptyIndex] = localUrl;
+        localEntries.push({ file, localUrl });
+        searchIndex = emptyIndex + 1;
+      }
+      if (localEntries.length > 0) {
+        setGalleryUploadOrder([
+          ...normalizeGalleryUploadOrder(galleryUploadOrderRef.current),
+          ...localEntries.map((entry) => entry.localUrl),
+        ], nextAlbumPhotos);
+        updateFormData({ albumPhotos: nextAlbumPhotos });
+      }
+      return localEntries;
+    }
+
+    const existingPhotos = currentAlbumPhotos.filter(Boolean);
+    const availableSlots = Math.max(0, 9 - existingPhotos.length);
+    for (const file of inputFiles.slice(0, availableSlots)) {
+      localEntries.push({ file, localUrl: URL.createObjectURL(file) });
+    }
+    if (localEntries.length === 0) return [];
+    const nextUploadOrder = setGalleryUploadOrder([
+      ...normalizeGalleryUploadOrder(galleryUploadOrderRef.current),
+      ...localEntries.map((entry) => entry.localUrl),
+    ], [
+      ...existingPhotos,
+      ...localEntries.map((entry) => entry.localUrl),
+    ]);
+    const sortedAlbumPhotos = await sortAlbumPhotosByMode([
+      ...existingPhotos,
+      ...localEntries.map((entry) => entry.localUrl),
+    ], gallerySortMode, nextUploadOrder);
+    updateFormData({ albumPhotos: sortedAlbumPhotos });
+    return localEntries;
+  };
+  const invitationType = String(config.invitationType || "standard");
+  const invitationTypeFieldMeta = invitationType === "reception"
+    ? {
+      infoSectionLabel: "피로연 정보",
+      dateLabel: "피로연 일시",
+      venueNameLabel: "피로연 장소명",
+      venueNamePlaceholder: "피로연 장소 검색어 입력",
+      venueAddressLabel: "피로연 주소",
+      helperText: "메인 일정, 장소, 지도는 피로연 기준으로 작성됩니다.",
+    }
+    : invitationType === "family"
+      ? {
+        infoSectionLabel: "가족예식 정보",
+        dateLabel: "가족예식 일시",
+        venueNameLabel: "가족예식 장소명",
+        venueNamePlaceholder: "가족예식 장소 검색어 입력",
+        venueAddressLabel: "가족예식 주소",
+        helperText: "참석 여부는 숨겨지고, 장소는 입력한 경우에만 레이아웃에 표시됩니다.",
+      }
+      : invitationType === "congrats"
+        ? {
+          infoSectionLabel: "안내 정보",
+          dateLabel: "기념일 일시",
+          venueNameLabel: "장소명",
+          venueNamePlaceholder: "",
+          venueAddressLabel: "주소",
+          helperText: "일시는 작성하고, 장소는 노출되지 않습니다.",
+          dateInputType: "datetime-local",
+          showVenueFields: false,
+        }
+        : {
+          infoSectionLabel: "Wedding Info",
+          dateLabel: "예식 일시",
+          venueNameLabel: "예식장 이름",
+          venueNamePlaceholder: "장소명 검색어 입력",
+          venueAddressLabel: "예식장 주소",
+          helperText: "일정, 장소, 지도, 참석 여부를 포함하는 기본 청첩장 구성이 적용됩니다.",
+          dateInputType: "datetime-local",
+          showVenueFields: true,
+        };
   const hasExplicitHeroColorConfig = (source) => {
     if (!source || typeof source !== "object") return false;
     return HERO_TEXT_COLOR_ITEMS.some((item) => {
@@ -431,7 +842,9 @@ export default function Builder() {
     updateConfig(updates);
   };
   const updateTextOverride = (key, value) => {
-    updateConfig({ [key]: value });
+    if (!String(key || "").endsWith("Phone")) {
+      updateConfig({ [key]: value });
+    }
     if (key === "mainTitleText") updateFormData({ invitationTitle: value });
     if (key === "groomDisplayName") updateFormData({ groom: value });
     if (key === "brideDisplayName") updateFormData({ bride: value });
@@ -440,9 +853,15 @@ export default function Builder() {
     if (key === "groomFatherText") updateFormData({ groomFather: value });
     if (key === "groomMotherText") updateFormData({ groomMother: value });
     if (key === "groomRelationText") updateFormData({ groomRelation: value });
+    if (key === "groomPhone") updateFormData({ groomPhone: value });
+    if (key === "groomFatherPhone") updateFormData({ groomFatherPhone: value });
+    if (key === "groomMotherPhone") updateFormData({ groomMotherPhone: value });
     if (key === "brideFatherText") updateFormData({ brideFather: value });
     if (key === "brideMotherText") updateFormData({ brideMother: value });
     if (key === "brideRelationText") updateFormData({ brideRelation: value });
+    if (key === "bridePhone") updateFormData({ bridePhone: value });
+    if (key === "brideFatherPhone") updateFormData({ brideFatherPhone: value });
+    if (key === "brideMotherPhone") updateFormData({ brideMotherPhone: value });
     if (key === "noticeTitleText") updateFormData({ noticeTitle: value });
     if (key === "noticeContentText") updateFormData({ noticeContent: value });
   };
@@ -450,6 +869,7 @@ export default function Builder() {
     if (Object.prototype.hasOwnProperty.call(config, key)) {
       return String(config[key] ?? "");
     }
+    if (key === "messageSectionTitleText") return getInvitationMessageSectionTitle(String(config.invitationType || "standard"));
     if (key === "mainTitleText") return String(formData.invitationTitle ?? "");
     if (key === "groomDisplayName") return String(formData.groom ?? "");
     if (key === "brideDisplayName") return String(formData.bride ?? "");
@@ -458,9 +878,15 @@ export default function Builder() {
     if (key === "groomFatherText") return String(formData.groomFather ?? "");
     if (key === "groomMotherText") return String(formData.groomMother ?? "");
     if (key === "groomRelationText") return String(formData.groomRelation ?? "");
+    if (key === "groomPhone") return String(formData.groomPhone ?? "");
+    if (key === "groomFatherPhone") return String(formData.groomFatherPhone ?? "");
+    if (key === "groomMotherPhone") return String(formData.groomMotherPhone ?? "");
     if (key === "brideFatherText") return String(formData.brideFather ?? "");
     if (key === "brideMotherText") return String(formData.brideMother ?? "");
     if (key === "brideRelationText") return String(formData.brideRelation ?? "");
+    if (key === "bridePhone") return String(formData.bridePhone ?? "");
+    if (key === "brideFatherPhone") return String(formData.brideFatherPhone ?? "");
+    if (key === "brideMotherPhone") return String(formData.brideMotherPhone ?? "");
     if (key === "noticeTitleText") return String(formData.noticeTitle ?? "");
     if (key === "noticeContentText") return String(formData.noticeContent ?? "");
     return String(config[key] ?? "");
@@ -471,8 +897,8 @@ export default function Builder() {
     const el = document.getElementById("control-typography");
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
   };
+  const hiddenTextPickerItems = Object.entries(BUILDER_TEXT_PICKER_META).filter(([, meta]) => meta.visibilityKey && config[meta.visibilityKey] === false);
   const [venueKeyword, setVenueKeyword] = useState("");
-  const [venueNameInput, setVenueNameInput] = useState("");
   const [venueSearchMode, setVenueSearchMode] = useState("address");
   const [showVenueSearchModal, setShowVenueSearchModal] = useState(false);
   const [placeResults, setPlaceResults] = useState([]);
@@ -486,37 +912,69 @@ export default function Builder() {
   const appliedInitialSkin = useRef(false);
   useEffect(() => {
     if (skins.length === 0 || appliedInitialSkin.current) return;
+    if (initialData) return;
+    if (querySlug && !initialData) return;
     appliedInitialSkin.current = true;
     const match = skins.find((sk) => sk.slug === template);
     if (match) applySkinConfig(match, { applyTextDefaults: !initialData });
-  }, [skins, template, initialData]);
+  }, [skins, template, initialData, querySlug]);
 
   const appliedQueryTemplate = useRef(false);
   useEffect(() => {
     if (!queryTemplate || skins.length === 0 || appliedQueryTemplate.current) return;
+    if (initialData) return;
+    if (querySlug && !initialData) return;
     const s = skins.find((sk) => sk.slug === queryTemplate);
     if (s) {
       appliedQueryTemplate.current = true;
       applySkinConfig(s, { applyTextDefaults: !initialData });
     }
-  }, [queryTemplate, skins, initialData]);
+  }, [queryTemplate, skins, initialData, querySlug]);
 
   function applySkinConfig(skin, options = {}) {
     if (!skin) return;
     const { applyTextDefaults = false } = options;
     try {
       const raw = skin.config;
-      const parsed = typeof raw === "string" ? JSON.parse(raw || "{}") : (raw || {});
+      const parsedSource = typeof raw === "string" ? JSON.parse(raw || "{}") : (raw || {});
+      const parsed = applyTextDefaults ? parsedSource : omitInvitationContentConfig(parsedSource);
       const fallback = skinDefaultsBySlug[skin.slug];
+      const currentVenueName = String(formData.venueName || "").trim();
+      const currentInvitationType = String(config.invitationType || defaultFullConfig.invitationType || "standard");
+      const currentGallerySortMode = String(config.gallerySortMode || defaultFullConfig.gallerySortMode || "upload");
+      const currentGalleryUploadOrder = getGalleryUploadOrder();
+      const preservedVisibilityConfig = Object.entries(config || {}).reduce((acc, [key, value]) => {
+        if (isVisibilityConfigKey(key)) acc[key] = value;
+        return acc;
+      }, {});
+      const preservedContentConfig = applyTextDefaults
+        ? {}
+        : INVITATION_CONTENT_CONFIG_KEYS.reduce((acc, key) => {
+          if (hasOwnKey(config, key)) acc[key] = config[key];
+          return acc;
+        }, {});
       const shouldUseCustomHeroText =
         String(parsed.heroTextColorMode || "").toLowerCase() === "custom" || hasExplicitHeroColorConfig(parsed);
       const merged = {
         ...defaultFullConfig,
         ...(fallback || {}),
         ...parsed,
+        ...preservedVisibilityConfig,
+        ...preservedContentConfig,
+        invitationType: currentInvitationType,
+        gallerySortMode: currentGallerySortMode,
+        galleryUploadOrder: currentGalleryUploadOrder,
         ...(shouldUseCustomHeroText ? { heroTextColorMode: "custom" } : {}),
         theme: skin.slug,
       };
+      if (applyTextDefaults) {
+        if (currentVenueName) {
+          merged.venueDisplayName = currentVenueName;
+        } else {
+          merged.venueDisplayName = "";
+          merged.heroVenueNameText = "";
+        }
+      }
       if (!merged.bgColor && fallback) merged.bgColor = fallback.bgColor;
       if (!merged.subBgColor && fallback) merged.subBgColor = fallback.subBgColor;
       setConfig(merged);
@@ -527,7 +985,6 @@ export default function Builder() {
           invitationMessage: pickNonEmptyText(parsed.invitationBodyText, prev.invitationMessage),
           groom: pickNonEmptyText(parsed.groomDisplayName, prev.groom),
           bride: pickNonEmptyText(parsed.brideDisplayName, prev.bride),
-          venueName: pickNonEmptyText(parsed.venueDisplayName ?? parsed.heroVenueNameText, prev.venueName),
           groomFather: pickNonEmptyText(parsed.groomFatherText, prev.groomFather),
           groomMother: pickNonEmptyText(parsed.groomMotherText, prev.groomMother),
           groomRelation: pickNonEmptyText(parsed.groomRelationText, prev.groomRelation),
@@ -780,9 +1237,29 @@ export default function Builder() {
         String(config.invitationBodyText || "").trim() ||
         String(formData.invitationMessage || "").trim() ||
         DEFAULT_INVITATION_MESSAGE;
+      const persistedConfig = {
+        ...config,
+        galleryUploadOrder: getGalleryUploadOrder(),
+        mainTitleText: String(formData.invitationTitle ?? ""),
+        invitationBodyText: resolvedInvitationMessage,
+        groomDisplayName: String(formData.groom ?? ""),
+        brideDisplayName: String(formData.bride ?? ""),
+        venueDisplayName: String(formData.venueName ?? ""),
+        heroVenueNameText: hasOwnKey(config, "heroVenueNameText") ? String(config.heroVenueNameText ?? "") : String(formData.venueName ?? ""),
+        noticeTitleText: String(formData.noticeTitle ?? ""),
+        noticeContentText: String(formData.noticeContent ?? ""),
+        groomFatherText: String(formData.groomFather ?? ""),
+        groomMotherText: String(formData.groomMother ?? ""),
+        groomRelationText: String(formData.groomRelation ?? ""),
+        brideFatherText: String(formData.brideFather ?? ""),
+        brideMotherText: String(formData.brideMother ?? ""),
+        brideRelationText: String(formData.brideRelation ?? ""),
+        mainPhotoZoom: photoZoom,
+        mainPhotoAspectRatio: photoAspectRatio,
+      };
       const res = await api.post("/invitations", {
         id: initialData?.id, slug: formData.slug, groomName: formData.groom, brideName: formData.bride,
-        weddingDate: new Date(formData.weddingDate).toISOString(), venueName: formData.venueName, venueAddress: formData.venueAddress,
+        weddingDate: toApiDateTimeValue(formData.weddingDate), venueName: formData.venueName, venueAddress: formData.venueAddress,
         mainPhotoUrl: formData.photoUrl || undefined, mainPhotoFit: photoFit, mainPhotoPosition: photoPosition, template,
         skinId: selectedSkinId || undefined,
         invitationTitle: formData.invitationTitle, invitationMessage: resolvedInvitationMessage,
@@ -794,12 +1271,7 @@ export default function Builder() {
         youtubeUrl: formData.youtubeUrl, bgmUrl: formData.bgmUrl, noticeTitle: formData.noticeTitle, noticeContent: formData.noticeContent,
         dDayEnabled: formData.dDayEnabled,
         navigationEnabled: formData.navigationEnabled,
-        config: JSON.stringify({
-          ...config,
-          invitationBodyText: resolvedInvitationMessage,
-          mainPhotoZoom: photoZoom,
-          mainPhotoAspectRatio: photoAspectRatio,
-        }),
+        config: JSON.stringify(persistedConfig),
       });
       if (res.data.success) {
         alert("저장 완료되었습니다. 대시보드로 이동합니다.");
@@ -1044,7 +1516,7 @@ export default function Builder() {
 
   const openVenueSearchModal = () => {
     setVenueSearchMode("place");
-    setVenueKeyword(String(venueNameInput || "").trim());
+    setVenueKeyword(String(formData.venueName || "").trim());
     setPlaceResults([]);
     setPlaceSearchError("");
     setShowVenueSearchModal(true);
@@ -1099,7 +1571,7 @@ export default function Builder() {
     }
   };
   const handlePlaceKeywordSearch = async (initialKeyword = "") => {
-    const keyword = String(initialKeyword || venueKeyword || venueNameInput || "").trim();
+    const keyword = String(initialKeyword || venueKeyword || formData.venueName || "").trim();
     if (!venueKeyword && keyword) setVenueKeyword(keyword);
     if (!keyword) {
       setPlaceSearchError("장소명을 입력해 주세요.");
@@ -1173,12 +1645,13 @@ export default function Builder() {
     }
   };
   const handleSelectPlaceResult = (place) => {
+    const nextVenueName = place.place_name ? place.place_name : formData.venueName;
     const address = place.road_address_name || place.address_name || "";
     updateFormData({
-      venueName: place.place_name ? place.place_name : formData.venueName,
+      venueName: nextVenueName,
       venueAddress: address || formData.venueAddress,
     });
-    setVenueNameInput("");
+    updateConfig({ venueDisplayName: nextVenueName });
     setPlaceResults([]);
     setPlaceSearchError("");
     setShowVenueSearchModal(false);
@@ -1383,7 +1856,7 @@ export default function Builder() {
                         return typeof currentSkin.config === "string" ? JSON.parse(currentSkin.config || "{}") : (currentSkin.config || {});
                       } catch { return {}; }
                     })();
-                    const previewConfig = { ...getTypoForTemplate(currentSkin.slug), ...skinDefaultsBySlug[currentSkin.slug], ...skinConfig, theme: currentSkin.slug, imageHeight: config.imageHeight, imageWidth: config.imageWidth, imageStyle: config.imageStyle, imageGradient: config.imageGradient, mainPhotoZoom: photoZoom, mainPhotoAspectRatio: photoAspectRatio };
+                    const previewConfig = { ...getTypoForTemplate(currentSkin.slug), ...skinDefaultsBySlug[currentSkin.slug], ...skinConfig, theme: currentSkin.slug, invitationType: config.invitationType, imageHeight: config.imageHeight, imageWidth: config.imageWidth, imageStyle: config.imageStyle, imageGradient: config.imageGradient, mainPhotoZoom: photoZoom, mainPhotoAspectRatio: photoAspectRatio };
                     const previewData = {
                       groomName: "신랑", brideName: "신부",
                       weddingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -1478,30 +1951,111 @@ export default function Builder() {
               </div>
             )}
           </div>
+          <div id="control-invitation-type" className={`p-6 border-b border-zinc-100 transition-all ${selectedSection === "invitation-type" ? "bg-zinc-50" : "bg-white"}`} onClick={() => setSelectedSection("invitation-type")}>
+            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">초대 유형</label>
+            <p className="mt-3 text-[11px] leading-5 text-zinc-500">{invitationTypeFieldMeta.helperText}</p>
+            <div className="mt-4 space-y-2">
+              {INVITATION_TYPE_OPTIONS.map((option) => {
+                const isSelected = String(config.invitationType || "standard") === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedSection("invitation-type");
+                      updateConfig({ invitationType: option.value });
+                    }}
+                    className={`w-full rounded-2xl border px-4 py-3 text-left transition-all ${isSelected ? "border-zinc-900 bg-zinc-900 text-white shadow-sm" : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50"}`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm font-black tracking-tight">{option.label}</span>
+                      {isSelected && <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em]">선택됨</span>}
+                    </div>
+                    <p className={`mt-1.5 text-xs leading-5 ${isSelected ? "text-white/85" : "text-zinc-500"}`}>{option.description}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           {renderMainPhotoSection()}
           {/* Typography */}
           <div id="control-typography" className={`p-6 border-b border-zinc-100 transition-all ${selectedSection === "typography" ? "bg-zinc-50" : "bg-white"}`} onClick={() => setSelectedSection("typography")}>
             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Typography & Hero Text</label>
             <div className="mt-6 space-y-4">
               <p className="text-[11px] text-zinc-500">미리보기 텍스트를 클릭하면 아래에서 문구/크기를 바로 수정할 수 있습니다.</p>
+              {hiddenTextPickerItems.length > 0 && (
+                <div className="space-y-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">숨겨진 항목</div>
+                  <div className="flex flex-wrap gap-2">
+                    {hiddenTextPickerItems.map(([key, meta]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleTextSizePick(key);
+                        }}
+                        className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[10px] font-bold text-zinc-700"
+                      >
+                        {meta.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {pickedTextKey && BUILDER_TEXT_PICKER_META[pickedTextKey] && (
                 <div className="space-y-3 rounded-xl border border-zinc-200 bg-white p-3">
                   <div className="text-[10px] font-black text-zinc-500 uppercase">선택 항목: {BUILDER_TEXT_PICKER_META[pickedTextKey].label}</div>
+                  {BUILDER_TEXT_PICKER_META[pickedTextKey].visibilityKey && (
+                    <label className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+                      <span className="text-[10px] font-bold text-zinc-600 uppercase">{BUILDER_TEXT_PICKER_META[pickedTextKey].visibilityLabel || "표시 여부"}</span>
+                      <input
+                        type="checkbox"
+                        checked={config[BUILDER_TEXT_PICKER_META[pickedTextKey].visibilityKey] !== false}
+                        onChange={(e) => updateConfig({ [BUILDER_TEXT_PICKER_META[pickedTextKey].visibilityKey]: e.target.checked })}
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-4 w-4 accent-zinc-900"
+                      />
+                    </label>
+                  )}
                   {Array.isArray(BUILDER_TEXT_PICKER_META[pickedTextKey].textFields) && BUILDER_TEXT_PICKER_META[pickedTextKey].textFields.length > 0 && (
                     <div className="space-y-2">
                       {BUILDER_TEXT_PICKER_META[pickedTextKey].textFields.map((f) => (
                         <div key={f.key} className="space-y-1.5">
                           <label className="text-[10px] font-bold text-zinc-500">{f.label}</label>
-                          <textarea
-                            value={getTextFieldEditorValue(f.key)}
-                            onChange={(e) => updateTextOverride(f.key, e.target.value)}
-                            rows={2}
-                            className="w-full p-2.5 border rounded-lg text-xs resize-y"
-                            placeholder={f.placeholder || "텍스트를 입력하세요"}
-                          />
+                          {f.inputType === "tel" ? (
+                            <input
+                              type="tel"
+                              value={getTextFieldEditorValue(f.key)}
+                              onChange={(e) => updateTextOverride(f.key, e.target.value)}
+                              className="w-full p-2.5 border rounded-lg text-xs"
+                              placeholder={f.placeholder || "010-1234-5678"}
+                            />
+                          ) : (
+                            <textarea
+                              value={getTextFieldEditorValue(f.key)}
+                              onChange={(e) => updateTextOverride(f.key, e.target.value)}
+                              rows={f.rows || 2}
+                              className="w-full p-2.5 border rounded-lg text-xs resize-y"
+                              placeholder={f.placeholder || "텍스트를 입력하세요"}
+                            />
+                          )}
                         </div>
                       ))}
                     </div>
+                  )}
+                  {BUILDER_TEXT_PICKER_META[pickedTextKey].toggleKey && (
+                    <label className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+                      <span className="text-[10px] font-bold text-zinc-600 uppercase">{BUILDER_TEXT_PICKER_META[pickedTextKey].toggleLabel}</span>
+                      <input
+                        type="checkbox"
+                        checked={config[BUILDER_TEXT_PICKER_META[pickedTextKey].toggleKey] === true}
+                        onChange={(e) => updateConfig({ [BUILDER_TEXT_PICKER_META[pickedTextKey].toggleKey]: e.target.checked })}
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-4 w-4 accent-zinc-900"
+                      />
+                    </label>
                   )}
                   <div className="space-y-2">
                     <div className="flex justify-between items-center gap-2">
@@ -1538,139 +2092,98 @@ export default function Builder() {
           </div>
           {/* Info */}
           <div id="control-info" className={`p-6 border-b border-zinc-100 transition-all ${selectedSection === "info" ? "bg-zinc-50" : "bg-white"}`} onClick={() => setSelectedSection("info")}>
-            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Wedding Info</label>
+            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">{invitationTypeFieldMeta.infoSectionLabel}</label>
             <div className="mt-6 space-y-4">
               <div><label className="text-[11px] font-bold text-zinc-500 mb-1.5 block">URL 주소</label><input type="text" value={formData.slug} onChange={(e) => updateFormData({ slug: e.target.value })} className="w-full p-2.5 border rounded-xl text-sm" placeholder="예: cheolsu-wedding" /></div>
-              <div><label className="text-[11px] font-bold text-zinc-500 mb-1.5 block">예식 일시</label><input type="datetime-local" value={formData.weddingDate} onChange={(e) => updateFormData({ weddingDate: e.target.value })} className="w-full p-2.5 border rounded-xl text-sm" /></div>
-              <div>
-                <label className="text-[11px] font-bold text-zinc-500 mb-1.5 block">예식장 이름</label>
-                <input
-                  type="text"
-                  value={venueNameInput}
-                  onChange={(e) => setVenueNameInput(e.target.value)}
-                  className="w-full p-2.5 border rounded-xl text-sm"
-                  placeholder="장소명 검색어 입력"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] font-bold text-zinc-500 mb-1.5 block">예식장 주소</label>
-                <div className="flex gap-2">
-                  <input type="text" value={formData.venueAddress} readOnly className="flex-1 p-2.5 bg-zinc-50 border rounded-xl text-sm" />
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openVenueSearchModal();
-                      setTimeout(() => {
-                        const q = (venueNameInput || "").trim();
-                        if (q) handlePlaceKeywordSearch(q);
-                      }, 0);
-                    }}
-                    className="px-4 py-2.5 bg-zinc-900 text-white text-[11px] font-bold rounded-xl whitespace-nowrap"
-                  >
-                    검색
-                  </button>
-                </div>
-              </div>
+              <div><label className="text-[11px] font-bold text-zinc-500 mb-1.5 block">{invitationTypeFieldMeta.dateLabel}</label><input type={invitationTypeFieldMeta.dateInputType || "datetime-local"} value={formData.weddingDate} onChange={(e) => updateFormData({ weddingDate: e.target.value })} className="w-full p-2.5 border rounded-xl text-sm" /></div>
+              {invitationTypeFieldMeta.showVenueFields !== false && (
+                <>
+                  <div>
+                    <label className="text-[11px] font-bold text-zinc-500 mb-1.5 block">{invitationTypeFieldMeta.venueNameLabel}</label>
+                    <input
+                      type="text"
+                      value={formData.venueName}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        updateFormData({ venueName: value });
+                        updateConfig({ venueDisplayName: value });
+                      }}
+                      className="w-full p-2.5 border rounded-xl text-sm"
+                      placeholder={invitationTypeFieldMeta.venueNamePlaceholder}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-zinc-500 mb-1.5 block">{invitationTypeFieldMeta.venueAddressLabel}</label>
+                    <div className="flex gap-2">
+                      <input type="text" value={formData.venueAddress} readOnly className="flex-1 p-2.5 bg-zinc-50 border rounded-xl text-sm" />
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openVenueSearchModal();
+                          setTimeout(() => {
+                            const q = String(formData.venueName || "").trim();
+                            if (q) handlePlaceKeywordSearch(q);
+                          }, 0);
+                        }}
+                        className="px-4 py-2.5 bg-zinc-900 text-white text-[11px] font-bold rounded-xl whitespace-nowrap"
+                      >
+                        검색
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
           {/* Album */}
           <div id="control-album" className={`p-6 border-b border-zinc-100 transition-all ${selectedSection === "album" ? "bg-zinc-50" : "bg-white"}`} onClick={() => setSelectedSection("album")}>
             <div className="flex justify-between items-center mb-6">
-              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Gallery (Max 9)</label>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Gallery (Max 9)</label>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-zinc-500">정렬 기준</span>
+                  <select
+                    value={gallerySortMode}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      handleGallerySortModeChange(e.target.value);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-zinc-700"
+                  >
+                    {GALLERY_SORT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <p className="text-[10px] text-zinc-400">
+                  업로드 순서 유지 또는 가로/세로 비율 우선으로 자동 정렬됩니다.
+                </p>
+              </div>
               <button onClick={(e) => { e.stopPropagation(); document.getElementById("bulk-upload")?.click(); }} className="px-3 py-1.5 bg-zinc-900 text-white text-[10px] font-bold rounded-lg">일괄 업로드
                 <input id="bulk-upload" type="file" multiple accept="image/*" className="hidden" onChange={async (e) => {
-                  const files = Array.from(e.target.files || []).slice(0, 9); if (!files.length) return;
-                  const filesArray = Array.from(files);
-                  const initialAlbumPhotos = normalizeAlbumPhotos(formData.albumPhotos);
-                  const filesToUpload = [];
-                  const newAlbumPhotos = [...initialAlbumPhotos];
-
-                  // First pass: create local previews and prepare for upload
-                  let currentEmptyIdx = 0;
-                  for (let i = 0; i < filesArray.length; i++) {
-                    const file = filesArray[i];
-                    const emptyIdx = newAlbumPhotos.findIndex((v, idx) => !v && idx >= currentEmptyIdx);
-                    if (emptyIdx === -1) break; // No more empty slots
-                    const localUrl = URL.createObjectURL(file);
-                    newAlbumPhotos[emptyIdx] = localUrl;
-                    filesToUpload.push({ file, index: emptyIdx, localUrl });
-                    currentEmptyIdx = emptyIdx + 1;
+                  const files = Array.from(e.target.files || []).slice(0, 9);
+                  if (!files.length) return;
+                  const localEntries = await addGalleryFiles(files);
+                  for (const entry of localEntries) {
+                    await uploadGalleryAsset(entry.file, entry.localUrl);
                   }
-                  updateFormData({ albumPhotos: newAlbumPhotos });
-
-                  // Second pass: upload files and replace local URLs with server URLs
-                  for (const { file, index, localUrl } of filesToUpload) {
-                    const compressed = await compressImage(file);
-                    const d = new FormData();
-                    d.append("file", compressed);
-                    try {
-                      const r = await api.post("/invitations/upload", d, { headers: { "Content-Type": "multipart/form-data" } });
-                      if (r.data.success && r.data.url) {
-                        // Get the latest state to ensure we're updating correctly
-                        updateFormData((prevFormData) => {
-                          const latestAlbumPhotos = normalizeAlbumPhotos(prevFormData.albumPhotos);
-                          // Only replace if the current item at 'index' is still the localUrl we set
-                          if (latestAlbumPhotos[index] === localUrl) {
-                            latestAlbumPhotos[index] = r.data.url;
-                            URL.revokeObjectURL(localUrl); // Clean up the blob URL
-                          }
-                          return { ...prevFormData, albumPhotos: latestAlbumPhotos };
-                        });
-                      } else {
-                        // If upload fails, revert to null or handle error
-                        updateFormData((prevFormData) => {
-                          const latestAlbumPhotos = normalizeAlbumPhotos(prevFormData.albumPhotos);
-                          if (latestAlbumPhotos[index] === localUrl) {
-                            latestAlbumPhotos[index] = null;
-                            URL.revokeObjectURL(localUrl);
-                          }
-                          return { ...prevFormData, albumPhotos: latestAlbumPhotos };
-                        });
-                      }
-                    } catch {
-                      // If upload fails, revert to null or handle error
-                      updateFormData((prevFormData) => {
-                        const latestAlbumPhotos = normalizeAlbumPhotos(prevFormData.albumPhotos);
-                        if (latestAlbumPhotos[index] === localUrl) {
-                          latestAlbumPhotos[index] = null;
-                          URL.revokeObjectURL(localUrl);
-                        }
-                        return { ...prevFormData, albumPhotos: latestAlbumPhotos };
-                      });
-                    }
-                  }
+                  e.target.value = "";
                 }} />
               </button>
             </div>
             <div className="mt-6 grid grid-cols-3 gap-2">
               {Array.from({ length: 9 }).map((_, i) => (
-                <div key={i} className="relative aspect-square bg-zinc-50 border border-zinc-100 rounded-xl overflow-hidden group">
-                  {formData.albumPhotos[i] ? (<><img src={toThumbnailUrl(formData.albumPhotos[i])} alt={`album-${i}`} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { if (e.currentTarget.dataset.fallback === "1") return; e.currentTarget.dataset.fallback = "1"; e.currentTarget.src = formData.albumPhotos[i]; }} /><button onClick={() => { const n = normalizeAlbumPhotos(formData.albumPhotos); const oldUrl = n[i]; n[i] = null; updateFormData({ albumPhotos: n }); if (oldUrl && oldUrl.startsWith('blob:')) URL.revokeObjectURL(oldUrl); }} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"><X size={10} /></button></>) : (
+                <div key={`${i}-${formData.albumPhotos[i] || "empty"}`} className="relative aspect-square bg-zinc-50 border border-zinc-100 rounded-xl overflow-hidden group">
+                  {formData.albumPhotos[i] ? (<><img src={toThumbnailUrl(formData.albumPhotos[i])} alt={`album-${i}`} className="absolute inset-0 w-full h-full object-cover" onLoad={(e) => { delete e.currentTarget.dataset.fallback; }} onError={(e) => { if (e.currentTarget.dataset.fallback === "1") return; e.currentTarget.dataset.fallback = "1"; e.currentTarget.src = formatImageUrl(formData.albumPhotos[i]); }} /><button onClick={() => removeGalleryPhotoUrl(formData.albumPhotos[i])} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"><X size={10} /></button></>) : (
                     <div className="absolute inset-0 flex items-center justify-center text-zinc-300"><Upload size={16} /><input type="file" accept="image/*" onChange={async (e) => {
-                      const f = e.target.files?.[0]; if (!f) return;
-                      const localUrl = URL.createObjectURL(f);
-                      const n = normalizeAlbumPhotos(formData.albumPhotos); n[i] = localUrl; updateFormData({ albumPhotos: n });
-                      const compressed = await compressImage(f); const d = new FormData(); d.append("file", compressed); try {
-                        const r = await api.post("/invitations/upload", d, { headers: { "Content-Type": "multipart/form-data" } }); if (r.data.success && r.data.url) { const latestN = normalizeAlbumPhotos(formData.albumPhotos); if (latestN[i] === localUrl) { latestN[i] = r.data.url; URL.revokeObjectURL(localUrl); } updateFormData({ albumPhotos: latestN }); } else { // If upload fails, revert to null
-                          updateFormData((prevFormData) => {
-                            const latestN = normalizeAlbumPhotos(prevFormData.albumPhotos);
-                            if (latestN[i] === localUrl) {
-                              latestN[i] = null;
-                              URL.revokeObjectURL(localUrl);
-                            }
-                            return { ...prevFormData, albumPhotos: latestN };
-                          });
-                        }
-                      } catch { // If upload fails, revert to null
-                        updateFormData((prevFormData) => {
-                          const latestN = normalizeAlbumPhotos(prevFormData.albumPhotos);
-                          if (latestN[i] === localUrl) {
-                            latestN[i] = null;
-                            URL.revokeObjectURL(localUrl);
-                          }
-                          return { ...prevFormData, albumPhotos: latestN };
-                        });
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      const localEntries = await addGalleryFiles([f], i);
+                      if (localEntries[0]) {
+                        await uploadGalleryAsset(localEntries[0].file, localEntries[0].localUrl);
                       }
+                      e.target.value = "";
                     }} className="absolute inset-0 opacity-0 cursor-pointer" /></div>
                   )}
                 </div>
@@ -1715,9 +2228,9 @@ export default function Builder() {
         <div className="flex-1 overflow-y-auto scroll-smooth">
           <div className={`min-h-full flex flex-col items-center ${viewMode === "mobile" ? "pt-20" : ""}`}>
             {viewMode === "mobile" ? (
-              <MobileFrame backgroundColor={config.bgColor || "#ffffff"}><div className="absolute inset-0 overflow-y-auto hide-scrollbar" style={{ backgroundColor: config.bgColor || "#ffffff" }}>{formData.bgmUrl && <audio ref={audioRef} src={formData.bgmUrl} loop />}<InvitationView data={{ ...formData, mainPhotoUrl: formData.photoUrl, mainPhotoFit: photoFit, mainPhotoPosition: photoPosition, id: initialData?.id, config: { ...config, mainPhotoZoom: photoZoom, mainPhotoAspectRatio: photoAspectRatio } }} template={template} isPreview onSelectSection={handleSectionSelect} activeSection={selectedSection} onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} onPhotoClick={handlePhotoClick} previewPhotoContainerRef={previewPhotoContainerRef} onTextSizePick={handleTextSizePick} disableMainPhotoOverlay={String(config.imageStyle || "standard") !== "full"} forceFullImageDarken /></div></MobileFrame>
+              <MobileFrame backgroundColor={config.bgColor || "#ffffff"}><div className="absolute inset-0 overflow-y-auto hide-scrollbar" style={{ backgroundColor: config.bgColor || "#ffffff" }}>{formData.bgmUrl && <audio ref={audioRef} src={formData.bgmUrl} loop />}<InvitationView data={{ ...formData, mainPhotoUrl: formData.photoUrl, mainPhotoFit: photoFit, mainPhotoPosition: photoPosition, id: initialData?.id, config: { ...config, mainPhotoZoom: photoZoom, mainPhotoAspectRatio: photoAspectRatio } }} template={template} isPreview onSelectSection={handleSectionSelect} activeSection={selectedSection} onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} onPhotoClick={handlePhotoClick} previewPhotoContainerRef={previewPhotoContainerRef} onTextSizePick={handleTextSizePick} onHeroTextOffsetChange={updateConfig} disableMainPhotoOverlay={String(config.imageStyle || "standard") !== "full"} forceFullImageDarken /></div></MobileFrame>
             ) : (
-              <div className="w-full max-w-[800px] shadow-2xl overflow-hidden" style={{ backgroundColor: config.bgColor || "#ffffff" }}>{formData.bgmUrl && <audio ref={audioRef} src={formData.bgmUrl} loop />}<InvitationView data={{ ...formData, mainPhotoUrl: formData.photoUrl, mainPhotoFit: photoFit, mainPhotoPosition: photoPosition, id: initialData?.id, config: { ...config, mainPhotoZoom: photoZoom, mainPhotoAspectRatio: photoAspectRatio } }} template={template} isPreview previewUseLivePhotoLayout onSelectSection={handleSectionSelect} activeSection={selectedSection} onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} onPhotoClick={handlePhotoClick} previewPhotoContainerRef={previewPhotoContainerRef} onTextSizePick={handleTextSizePick} disableMainPhotoOverlay={String(config.imageStyle || "standard") !== "full"} forceFullImageDarken /></div>
+              <div className="w-full max-w-[800px] shadow-2xl overflow-hidden" style={{ backgroundColor: config.bgColor || "#ffffff" }}>{formData.bgmUrl && <audio ref={audioRef} src={formData.bgmUrl} loop />}<InvitationView data={{ ...formData, mainPhotoUrl: formData.photoUrl, mainPhotoFit: photoFit, mainPhotoPosition: photoPosition, id: initialData?.id, config: { ...config, mainPhotoZoom: photoZoom, mainPhotoAspectRatio: photoAspectRatio } }} template={template} isPreview previewUseLivePhotoLayout onSelectSection={handleSectionSelect} activeSection={selectedSection} onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} onPhotoClick={handlePhotoClick} previewPhotoContainerRef={previewPhotoContainerRef} onTextSizePick={handleTextSizePick} onHeroTextOffsetChange={updateConfig} disableMainPhotoOverlay={String(config.imageStyle || "standard") !== "full"} forceFullImageDarken /></div>
             )}
           </div>
         </div>
